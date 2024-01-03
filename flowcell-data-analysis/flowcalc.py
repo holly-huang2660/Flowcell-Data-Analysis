@@ -398,18 +398,6 @@ class FlowCalculator:
         eo_flow_df = pd.DataFrame(self.EO_flow_dict)
         return eo_flow_df
 
-    def export_single_summary(self, output_folder="output"):
-        flow_df = self.mean_flow_calculator()
-        eo_flow_df = self.eo_flow_calculator()
-        fom_df = self.FOM_calculator()
-
-        # write dataframes to separate sheets in a single xlsx file
-        with pd.ExcelWriter(f"{output_folder}/summary_{self.file_name}.xlsx") as writer:
-            self.comment_df.to_excel(writer, sheet_name="comments", index=False, header=False)
-            fom_df.to_excel(writer, sheet_name="figures of merit", index=False)
-            flow_df.to_excel(writer, sheet_name="flow and power summary", index=False)
-            eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
-
     def FOM_calculator(self):
         """
         Figures of merit:
@@ -426,10 +414,7 @@ class FlowCalculator:
 
         :return:
         """
-        FOM = {'membrane': [],
-               'electrode': [],
-               'iem': [],
-               'flow cell': [],
+        FOM = {'flow cell': [],
                'signal': [],
                'appv': [],
                'pressure flow (h=0)': [],
@@ -514,9 +499,6 @@ class FlowCalculator:
                         else:
                             cycle_pressure = 'n/a'
 
-                        FOM['membrane'].append(self.params['membrane'])
-                        FOM['electrode'].append(self.params['electrode'])
-                        FOM['iem'].append(self.params['iem'])
                         FOM['flow cell'].append(flowcell)
                         FOM['signal'].append(signal)
                         FOM['appv'].append(voltage)

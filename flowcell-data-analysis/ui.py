@@ -1,3 +1,4 @@
+import os.path
 import sys
 from textwrap import wrap
 
@@ -33,7 +34,7 @@ class UserInterface:
         self.label_output_name = Label(text="<output-folder>", bg=BG, font=FONT)
         self.button_output = Button(text="Browse folder", font=BUTTON_FONT, command=self.get_output_folder)
 
-        self.label_file = Label(text="Select both _PO and _WY data files: ", bg=BG, font=FONT)
+        self.label_file = Label(text="Select multiple data files for one experiment: ", bg=BG, font=FONT)
         self.label_file_name = Label(text="<file-name>", bg=BG, font=FONT)
         self.label_folder = Label(text="Select raw data folder: ", bg=BG, font=FONT)
         self.label_folder_name = Label(text="<data-folder-path>", bg=BG, font=FONT)
@@ -106,48 +107,12 @@ class UserInterface:
     def file_summary(self):
         # Make folder if it doesn't exist
         Path(f"{self.output_folder}/summary").mkdir(parents=True, exist_ok=True)
+        # Get experiment name
+        exp_name = self.file_path[0].split("/")[-1][:-3]
+        self.export_data_summary(file_list=self.file_path, summary_name=f"data summary {exp_name}.xlsx")
 
-        # ignore any files with extensions
-        exp_name = None
-        flow_list = []
-        eo_list = []
-        fom_list = []
-
-        for file in self.file_path:
-            flow_calculator = FlowCalculator(file_path=file)
-            mf = flow_calculator.mean_flow_calculator()
-            eo = flow_calculator.eo_flow_calculator()
-            fom = flow_calculator.FOM_calculator()
-
-            # remove flow cell designation from file name
-            exp_name = file.split('/')[-1][:-3]
-            print(exp_name)
-
-            mf.insert(0, "file", exp_name)
-            eo.insert(0, "file", exp_name)
-            fom.insert(0, "file", exp_name)
-
-            flow_list.append(mf)
-            eo_list.append(eo)
-            fom_list.append(fom)
-
-        flow_df = pd.concat(flow_list, ignore_index=True)
-        eo_flow_df = pd.concat(eo_list, ignore_index=True)
-        fom_df = pd.concat(fom_list, ignore_index=True)
-
-        with pd.ExcelWriter(f"{self.output_folder}/summary/data summary {exp_name}.xlsx") as writer:
-            fom_df.to_excel(writer, sheet_name="figures of merit", index=False)
-            flow_df.to_excel(writer, sheet_name="flow and power summary", index=False)
-            eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
         print("File summary generated")
         self.file_sum_check.config(text="✓")
-
-        # # Make folder if it doesn't exist
-        # Path(f"{self.output_folder}/summary").mkdir(parents=True, exist_ok=True)
-        #
-        # # Calculate and export excel to output folder
-        # flow_calculator = FlowCalculator(file_path=self.file_path)
-        # flow_calculator.export_single_summary(output_folder=f"{self.output_folder}/summary")
 
     def file_plot(self):
         # Make folder if it doesn't exist
@@ -175,20 +140,33 @@ class UserInterface:
 
     def folder_summary(self):
         # ignore any files with extensions
-        file_list = [f for f in listdir(f"{self.folder_path}") if "." not in f]
+        file_list = [f"{self.folder_path}/{f}" for f in listdir(f"{self.folder_path}")
+                     if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
+        folder_name = self.folder_path.split("/")[-1]
+        self.export_data_summary(file_list=file_list, summary_name=f"{folder_name} folder summary.xlsx")
+        print("Folder summary generated")
+        self.folder_sum_check.config(text="✓")
+
+    def export_data_summary(self, file_list, summary_name):
+        material_list = {
+            'file': [],
+            'membrane': [],
+            'electrode': [],
+            'iem': []
+        }
         flow_list = []
         eo_list = []
         fom_list = []
 
         for file in file_list:
-            file_path = f"{self.folder_path}/{file}"
-            flow_calculator = FlowCalculator(file_path=file_path)
+            flow_calculator = FlowCalculator(file_path=file)
             mf = flow_calculator.mean_flow_calculator()
             eo = flow_calculator.eo_flow_calculator()
             fom = flow_calculator.FOM_calculator()
 
             # remove flow cell designation from file name
-            exp_name = file[:-3]
+            exp_name = file.split('/')[-1][:-3]
+            print(exp_name)
 
             mf.insert(0, "file", exp_name)
             eo.insert(0, "file", exp_name)
@@ -198,24 +176,28 @@ class UserInterface:
             eo_list.append(eo)
             fom_list.append(fom)
 
+            material_list['file'].append(exp_name)
+            material_list['membrane'].append(flow_calculator.params['membrane'])
+            material_list['electrode'].append(flow_calculator.params['electrode'])
+            material_list['iem'].append(flow_calculator.params['iem'])
+
         flow_df = pd.concat(flow_list, ignore_index=True)
         eo_flow_df = pd.concat(eo_list, ignore_index=True)
         fom_df = pd.concat(fom_list, ignore_index=True)
+        material_df = pd.DataFrame(material_list)
+        material_df.drop_duplicates('file', ignore_index=True, inplace=True)
 
-        # Make folder if it doesn't exist
-        Path(f"{self.output_folder}/summary").mkdir(parents=True, exist_ok=True)
-
-        with pd.ExcelWriter(f"{self.output_folder}/summary/folder data summary.xlsx") as writer:
+        with pd.ExcelWriter(f"{self.output_folder}/summary/{summary_name}") as writer:
+            material_df.to_excel(writer, sheet_name="experiment setup", index=False)
             fom_df.to_excel(writer, sheet_name="figures of merit", index=False)
             flow_df.to_excel(writer, sheet_name="flow and power summary", index=False)
             eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
-        print("Folder summary generated")
-        self.folder_sum_check.config(text="✓")
 
     def boxplot_plot(self):
         # df = pd.read_excel("canonical samples/boxplot_data.xlsx")
         # loop through all files in a folder
-        file_list = [f for f in listdir(f"{self.folder_path}") if "." not in f]
+        file_list = [f for f in listdir(f"{self.folder_path}")
+                     if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
         list1 = []
         deltah = 0
         user_input = messagebox.askyesno("Plotting",
