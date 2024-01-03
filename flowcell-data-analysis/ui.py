@@ -111,7 +111,7 @@ class UserInterface:
         exp_name = self.file_path[0].split("/")[-1][:-3]
         self.export_data_summary(file_list=self.file_path, summary_name=f"data summary {exp_name}.xlsx")
 
-        print("File summary generated")
+        print(f"File summary generated. File is located in {self.output_folder}/summary")
         self.file_sum_check.config(text="✓")
 
     def file_plot(self):
@@ -149,7 +149,7 @@ class UserInterface:
                      if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
         folder_name = self.folder_path.split("/")[-1]
         self.export_data_summary(file_list=file_list, summary_name=f"{folder_name} folder summary.xlsx")
-        print("Folder summary generated")
+        print(f"Folder summary generated. File is located in {self.output_folder}/summary")
         self.folder_sum_check.config(text="✓")
 
     def export_data_summary(self, file_list, summary_name):
