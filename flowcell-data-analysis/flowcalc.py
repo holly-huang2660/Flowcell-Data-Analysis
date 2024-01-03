@@ -88,6 +88,9 @@ class FlowCalculator:
         params = {'period': None,
                   'diameter': None,
                   'resistor': None,
+                  'membrane': None,
+                  'electrode': None,
+                  'iem': None,
                   'ignoredphases': [],
                   'ignoredcycles': [],
                   'ignoredranges': [],
@@ -121,6 +124,16 @@ class FlowCalculator:
                     num = val[0].partition('ohm')[0]  # if no space before ohm
                     params['resistor'] = float(num)
                     print('Resistor specified: %f ohm' % params['resistor'])
+
+                # Parse materials from comment file
+                if line.startswith('Membrane'):
+                    params['membrane'] = line.split(":")[1].strip()
+                if line.startswith('Electrode'):
+                    params['electrode'] = line.split(":")[1].strip()
+                if line.startswith('Ion'):
+                    params['iem'] = line.split(":")[1].strip()
+
+                # Parse actions from comment file
                 if line.startswith('Ignore-phase'):
                     phaselist = line.partition(":")[2].split()
                     for i in phaselist:
@@ -413,7 +426,10 @@ class FlowCalculator:
 
         :return:
         """
-        FOM = {'flow cell': [],
+        FOM = {'membrane': [],
+               'electrode': [],
+               'iem': [],
+               'flow cell': [],
                'signal': [],
                'appv': [],
                'pressure flow (h=0)': [],
@@ -498,6 +514,9 @@ class FlowCalculator:
                         else:
                             cycle_pressure = 'n/a'
 
+                        FOM['membrane'].append(self.params['membrane'])
+                        FOM['electrode'].append(self.params['electrode'])
+                        FOM['iem'].append(self.params['iem'])
                         FOM['flow cell'].append(flowcell)
                         FOM['signal'].append(signal)
                         FOM['appv'].append(voltage)
