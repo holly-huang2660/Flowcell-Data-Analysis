@@ -14,33 +14,35 @@ FIG_SIZE = (6, 4)
 
 class DataPlot:
     def __init__(self, file_path):
-
-        self.df = []
+        self.df = pd.DataFrame(columns=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
         self.file_name = []
 
         # for multiple files
         if len(file_path) > 1:
-            for file in file_path:
-                flow_calculator = FlowCalculator(file_path=file)
-                self.df.append(flow_calculator.raw_data)
-                self.file_name.append(file.split("/")[-1])
+            for exp in file_path:
+                exp_name = exp.split("/")[-1]
+                cell_pair = exp_name.split("_")[-1]
+                self.file_name.append(exp_name)
 
-            # self.df = pd.concat(self.df, ignore_index=True)
+                flow_calculator = FlowCalculator(file_path=exp)
+                raw_data = flow_calculator.raw_data
+                raw_data.drop(columns=['sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
+                              inplace=True)
 
-            for n in range(len(self.df) - 1):
-                left = self.file_name[n].split('_')[-1]
-                right = self.file_name[n + 1].split('_')[-1]
-                self.df = self.df[n].merge(self.df[n + 1],
-                                           how='left',
-                                           left_on=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'],
-                                           right_on=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'],
-                                           suffixes=(f"_{left}", f"_{right}")
-                                           )
+                old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
+                new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
+                raw_data.rename(columns=new_cols, inplace=True)
+
+                merged = pd.merge(self.df, raw_data, how='right', on=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
+                self.df = merged
         else:  # processing a single file
             file_path = file_path[0]
             flow_calculator = FlowCalculator(file_path=file_path)
             self.df = flow_calculator.raw_data
             self.file_name = file_path.split("/")[-1]
+
+        # Drop any empty rows without values
+        self.df.dropna(ignore_index=True, inplace=True)
 
         # Text for plot titles, auto-wrap ones that are too long
         if type(self.file_name) is list:
@@ -60,6 +62,10 @@ class DataPlot:
         self.signal = 1
         self.deltah = 0
         self.prompt_user_input()
+
+        # Get column names
+        self.col_names = [name for name in self.df.columns if
+                          ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
 
     def prompt_user_input(self):
         signal_list = self.df["signal"].unique()
@@ -258,7 +264,8 @@ class DataPlot:
                                  )]
         df_filter = df_filter.copy()
 
-        col_names = [name for name in self.df.columns if ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
+        # col_names = [name for name in self.df.columns if ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
+        col_names = self.col_names
 
         avg_list = []
         std_list = []

@@ -120,9 +120,14 @@ class UserInterface:
 
         # Calculates and save figures to figure folder
         data_plot = DataPlot(file_path=self.file_path)
-        data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
         data_plot.cycle_avg_plot(figure_folder=f"{self.output_folder}/figures")
         data_plot.snapshot_plot(figure_folder=f"{self.output_folder}/figures")
+
+        # Only plot cycle average by flow cell if multiple data files were selected
+        if len(self.file_path) > 1:
+            data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
+
+
         print(f"Plotting finished, figures are located in {self.output_folder}/figures")
         self.file_plot_check.config(text="✓")
 
