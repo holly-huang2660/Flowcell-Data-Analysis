@@ -22,6 +22,7 @@ BG = "#a7bbc6"
 
 class UserInterface:
     def __init__(self):
+        self.folder_file_list = None
         self.folder_path = None
         self.file_path = None
         self.output_folder = None
@@ -142,14 +143,16 @@ class UserInterface:
 
         # GUI to prompt user to select folder
         self.folder_path = askdirectory(title="Select Folder")
+        # Find all data files in the selected folder
+        self.folder_file_list = [f"{self.folder_path}/{f}" for f in listdir(f"{self.folder_path}")
+                                 if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
+
         self.label_folder_name.config(text='\n'.join(wrap(self.folder_path, 60)))
 
     def folder_summary(self):
-        # ignore any files with extensions
-        file_list = [f"{self.folder_path}/{f}" for f in listdir(f"{self.folder_path}")
-                     if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
         folder_name = self.folder_path.split("/")[-1]
-        self.export_data_summary(file_list=file_list, summary_name=f"{folder_name} folder summary.xlsx")
+        self.export_data_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} folder summary.xlsx")
+
         print(f"Folder summary generated. File is located in {self.output_folder}/summary")
         self.folder_sum_check.config(text="✓")
 
@@ -212,26 +215,18 @@ class UserInterface:
                                    IQR
         :return:
         """
-        file_list = [f for f in listdir(f"{self.folder_path}")
-                     if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
-        list1 = []
-        deltah = 0
-        user_input = messagebox.askyesno("Plotting",
-                                         "Change the height delta (default=0) for boxplot?")
-        if user_input:
-            deltah = simpledialog.askfloat("Height", "Enter height delta: ")
-            if deltah not in [0, 0.1, 0.2]:
-                messagebox.showinfo("Info", "Height delta can only be 0, 0.1, or 0.2 m. Resetting to 0 m")
-                deltah = 0
+        # write graph to figures folder
+        Path(f"{self.output_folder}/figures/boxplot").mkdir(parents=True, exist_ok=True)
 
-        for file in file_list:
-            file_path = f"{self.folder_path}/{file}"
-            flow_calculator = FlowCalculator(file_path=file_path)
+        list1 = []
+
+        for file in self.folder_file_list:
+            # Calculate figures of merit
+            flow_calculator = FlowCalculator(file_path=file)
             df1 = flow_calculator.FOM_calculator()
 
             # remove flow cell designation from file name
-            exp_name = file[:-3]
-
+            exp_name = file.split("/")[-1][:-3]
             df1.insert(0, "file", exp_name)
             list1.append(df1)
 
@@ -260,41 +255,55 @@ class UserInterface:
         # Create new column with abbreviated name
         df["sample"] = df["file"].map(plot_label, na_action="ignore")
 
-        # # write to temp file for troubleshooting
-        # Path(f"{self.output_folder}/temp").mkdir(parents=True, exist_ok=True)
-        # df.to_excel(f"{self.output_folder}/temp/temp.xlsx")
-        #
-        # # write graph to figures folder
-        # Path(f"{self.output_folder}/figures/boxplot").mkdir(parents=True, exist_ok=True)
-        # sns.set_style("whitegrid")
+        folder_name = self.folder_path.split("/")[-1]
 
-        plot_list = ["neg pulse flow (h=0)",
-                     "pos pulse flow (h=0)",
-                     "cycle flow (h=0)"]
+        # Plot for comparing flow
+        self.fom_boxplot(df=df, fom_list=["neg pulse flow (h=0)", "pos pulse flow (h=0)", "cycle flow (h=0)"],
+                         plot_name=f"{folder_name} flow boxplot", y_label=r"Flow [L/h/$m^{2}$]")
 
-        # Config figure size based on number of comparisons
-        fig_width = len(file_list)*0.85
+        # Plot for comparing pressure (hydrostatic head, m)
+        self.fom_boxplot(df=df, fom_list=['hydraulic permeability'],
+                         plot_name=f"{folder_name} perm boxplot", y_label=r"Hydrostatic Permeability")
+
+        # Plot for comparing pressure (hydrostatic head, m)
+        self.fom_boxplot(df=df, fom_list=['pulse pressure (m)', 'cycle pressure (m)'],
+                         plot_name=f"{folder_name} pressure boxplot", y_label=r"Hydrostatic Head [m]")
+
+        # Plot for comparing power consumption
+        self.fom_boxplot(df=df, fom_list=['pulse energy consumption (Wh/L)', 'cycle energy consumption (Wh/L)'],
+                         plot_name=f"{folder_name} power boxplot", y_label="Power [Wh/L]")
+
+        self.boxplot_check.config(text="✓")
+        print(f"Boxplot completed, output can be located at {self.output_folder}/figures/boxplot")
+
+    def fom_boxplot(self, df, fom_list, plot_name, y_label):
+        sns.set_style("whitegrid")
+        # Config figure size based on number of files in folder
+        fig_width = len(self.folder_file_list) * 0.85
         fig_height = 4
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
         # Manually configurate box plot legend
         color_list = sns.color_palette()
         handles = []
 
-        for n in range(len(plot_list)):
-            sns.boxplot(df, x="sample", y=plot_list[n], ax=ax)
+        # handle missing data or 'n/a'
+        for fom in fom_list:
+            df.drop(df[df[fom] == 'n/a'].index, inplace=True)
+
+        for n in range(len(fom_list)):
+            sns.boxplot(df, x="sample", y=fom_list[n], ax=ax)
 
             # Manually configurate box plot legend
-            handle = mpatches.Patch(facecolor=color_list[n], edgecolor='black', label=plot_list[n])
+            handle = mpatches.Patch(facecolor=color_list[n], edgecolor='black', label=fom_list[n])
             handles.append(handle)
 
         # Put a legend to the right of the current axis
         ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
         plt.xticks(wrap=True)
-        plt.ylabel(r"Flow [L/h/$m^{2}$]")
+        plt.ylabel(y_label)
 
-        fig.savefig(f"{self.output_folder}/figures/boxplot/boxplot flow deltah={deltah}.png",
+        fig.savefig(f"{self.output_folder}/figures/boxplot/{plot_name}.png",
                     bbox_inches='tight',
                     transparent=True)
-        plt.close()
 
-        self.boxplot_check.config(text="✓")
+        plt.close()
