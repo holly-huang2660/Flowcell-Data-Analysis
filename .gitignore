@@ -11,7 +11,7 @@ circuit fitting results.csv
 RRC_diode_fitting_results.xlsx
 dataexp.py
 scratchpad.py
-
+.gitignore
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

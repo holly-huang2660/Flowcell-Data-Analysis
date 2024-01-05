@@ -7,6 +7,7 @@ import seaborn as sns
 from dataplot import DataPlot
 from flowcalc import FlowCalculator
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from os import listdir
 from tkinter import *
 from tkinter.filedialog import askopenfilenames, askdirectory
@@ -34,7 +35,8 @@ class UserInterface:
         self.label_output_name = Label(text="<output-folder>", bg=BG, font=FONT)
         self.button_output = Button(text="Browse folder", font=BUTTON_FONT, command=self.get_output_folder)
 
-        self.label_file = Label(text="Select multiple data files for one experiment: ", bg=BG, font=FONT)
+        self.label_file = Label(text="Select multiple data files\nfor a single experiment:\n(PO & WY or GB & RK)",
+                                bg=BG, font=FONT)
         self.label_file_name = Label(text="<file-name>", bg=BG, font=FONT)
         self.label_folder = Label(text="Select raw data folder: ", bg=BG, font=FONT)
         self.label_folder_name = Label(text="<data-folder-path>", bg=BG, font=FONT)
@@ -62,7 +64,7 @@ class UserInterface:
         self.linebreak1 = Label(text="======================================", font=FONT, bg=BG)
         self.linebreak1.grid(row=2, column=0, columnspan=4)
 
-        self.label_file.grid(row=3, column=0, padx=5, pady=5, columnspan=2)
+        self.label_file.grid(row=3, column=0, padx=5, pady=5, columnspan=2, sticky='w')
         self.button_file.grid(row=3, column=2, padx=5, pady=5, columnspan=2)
         self.label_file_name.grid(row=4, column=0, columnspan=4)
         self.button_file_summary.grid(row=5, column=0, pady=15)
@@ -126,7 +128,6 @@ class UserInterface:
         # Only plot cycle average by flow cell if multiple data files were selected
         if len(self.file_path) > 1:
             data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
-
 
         print(f"Plotting finished, figures are located in {self.output_folder}/figures")
         self.file_plot_check.config(text="✓")
@@ -199,8 +200,18 @@ class UserInterface:
             eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
 
     def boxplot_plot(self):
-        # df = pd.read_excel("canonical samples/boxplot_data.xlsx")
-        # loop through all files in a folder
+        """
+        The box extends from the first quartile (Q1) to the third quartile (Q3) of the data, with a line at the median.
+        The whiskers extend from the box to the farthest data point lying within 1.5x the inter-quartile range (IQR)
+        from the box. Flier points are those past the end of the whiskers.
+                 Q1-1.5IQR   Q1   median  Q3   Q3+1.5IQR
+                              |-----:-----|
+              o      |--------|     :     |--------|    o  o
+                              |-----:-----|
+            flier             <----------->            fliers
+                                   IQR
+        :return:
+        """
         file_list = [f for f in listdir(f"{self.folder_path}")
                      if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
         list1 = []
@@ -216,7 +227,7 @@ class UserInterface:
         for file in file_list:
             file_path = f"{self.folder_path}/{file}"
             flow_calculator = FlowCalculator(file_path=file_path)
-            df1 = flow_calculator.boxplot_calculator(deltah=deltah)
+            df1 = flow_calculator.FOM_calculator()
 
             # remove flow cell designation from file name
             exp_name = file[:-3]
@@ -227,54 +238,63 @@ class UserInterface:
         df = pd.concat(list1, ignore_index=True)
         exp_list = df["file"].unique()
 
+        # Shorten experiment name
         plot_label = {}
-        for name in exp_list:
-            # user_input = input(f"Please enter label for file <{name}>:\n")
-            user_input = simpledialog.askstring("Plot sample name",
-                                                f"Please enter label for experiment <{name}>:\n")
-            # shorten original file name for plotting
-            if len(user_input) > 0:
-                plot_label[name] = user_input
-            else:
-                plot_label[name] = name
+        user_input = messagebox.askyesno("Plotting",
+                                         "Change sample names? Default is <sample YYMMDD>")
+        if user_input:
+            for name in exp_list:
+                user_input = simpledialog.askstring("Plot sample name",
+                                                    f"Please enter label for experiment <{name}>:\n")
+                # shorten original file name for plotting, if no input detected use the default
+                if len(user_input) > 0:
+                    plot_label[name] = user_input
+                else:
+                    exp_date = name.split('_')[0]
+                    plot_label[name] = f"sample {exp_date}"
+        else:
+            for name in exp_list:
+                exp_date = name.split('_')[0]
+                plot_label[name] = f"sample {exp_date}"
 
+        # Create new column with abbreviated name
         df["sample"] = df["file"].map(plot_label, na_action="ignore")
 
-        # print(df.columns)
-        # print(df.head())
+        # # write to temp file for troubleshooting
+        # Path(f"{self.output_folder}/temp").mkdir(parents=True, exist_ok=True)
+        # df.to_excel(f"{self.output_folder}/temp/temp.xlsx")
+        #
+        # # write graph to figures folder
+        # Path(f"{self.output_folder}/figures/boxplot").mkdir(parents=True, exist_ok=True)
+        # sns.set_style("whitegrid")
 
-        # invert values for plotting
-        df["net eo flow"] = df["net eo flow"] * -1
-        df["net current"] = df["net current"] * -1
+        plot_list = ["neg pulse flow (h=0)",
+                     "pos pulse flow (h=0)",
+                     "cycle flow (h=0)"]
 
-        # remove cycle 0 and 1
-        df.drop(df[df["cycle"] < 2].index, inplace=True)
-
-        # write to temp file for troubleshooting
-        Path(f"{self.output_folder}/temp").mkdir(parents=True, exist_ok=True)
-        df.to_excel(f"{self.output_folder}/temp/temp.xlsx")
-
-        # write graph to figures folder
-        Path(f"{self.output_folder}/figures/boxplot").mkdir(parents=True, exist_ok=True)
-        sns.set_style("whitegrid")
-
-        plot_list = {"net eo flow": r"Net EO Flow [L/h/$m^{2}$]",
-                     "total flow": r"Total Flow [L/h/$m^{2}$]",
-                     "net current": r"Net Current [A/$m^{2}$]",
-                     "total current": r"Total Current [A/$m^{2}$]"
-                     }
-
-        fig_width = len(file_list)
+        # Config figure size based on number of comparisons
+        fig_width = len(file_list)*0.85
         fig_height = 4
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        # Manually configurate box plot legend
+        color_list = sns.color_palette()
+        handles = []
 
-        for y_name, y_label in plot_list.items():
-            plt.figure(figsize=(fig_width, fig_height))
-            sns.boxplot(df, x="sample", y=y_name, legend="full")
-            plt.xticks(wrap=True)
-            plt.ylabel(y_label)
-            plt.savefig(f"{self.output_folder}/figures/boxplot/boxplot {y_name} deltah={deltah}.png",
-                        bbox_inches='tight',
-                        transparent=True)
-            plt.close()
+        for n in range(len(plot_list)):
+            sns.boxplot(df, x="sample", y=plot_list[n], ax=ax)
+
+            # Manually configurate box plot legend
+            handle = mpatches.Patch(facecolor=color_list[n], edgecolor='black', label=plot_list[n])
+            handles.append(handle)
+
+        # Put a legend to the right of the current axis
+        ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.xticks(wrap=True)
+        plt.ylabel(r"Flow [L/h/$m^{2}$]")
+
+        fig.savefig(f"{self.output_folder}/figures/boxplot/boxplot flow deltah={deltah}.png",
+                    bbox_inches='tight',
+                    transparent=True)
+        plt.close()
 
         self.boxplot_check.config(text="✓")

@@ -41,8 +41,8 @@ class DataPlot:
             self.df = flow_calculator.raw_data
             self.file_name = file_path.split("/")[-1]
 
-        # Drop any empty rows without values
-        self.df.dropna(ignore_index=True, inplace=True)
+        # # Drop any empty rows without values
+        # self.df.dropna(ignore_index=True, inplace=True)
 
         # Text for plot titles, auto-wrap ones that are too long
         if type(self.file_name) is list:
@@ -125,7 +125,7 @@ class DataPlot:
 
         Path(f"{figure_folder}/flow").mkdir(parents=True, exist_ok=True)
         Path(f"{figure_folder}/current").mkdir(parents=True, exist_ok=True)
-
+        print(df_filter)
         appv_abs = df_filter['appv'].abs().unique()[0]
 
         # Loop through all four variables of interest

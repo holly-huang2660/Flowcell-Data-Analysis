@@ -278,6 +278,9 @@ class FlowCalculator:
         # Boxplot dataframe
         cyc_dict = {"flow cell": [],
                     "cycle": [],
+                    'neg pulse flow': [],
+                    'pos pulse flow': [],
+                    'cycle flow': [],
                     "net eo flow": [],
                     "total flow": [],
                     "net current": [],
@@ -296,6 +299,8 @@ class FlowCalculator:
                 mean_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
                 mean_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
 
+                cycle_flow = (abs(mean_flow_pos) + abs(mean_flow_neg)) / 2
+
                 EO_flow_pos = (mean_flow_pos - mean_flow_zero)
                 EO_flow_neg = (mean_flow_neg - mean_flow_zero)
                 net_EO_flow = (EO_flow_pos + EO_flow_neg) / 2
@@ -309,6 +314,9 @@ class FlowCalculator:
 
                 cyc_dict["flow cell"].append(flowcell)
                 cyc_dict["cycle"].append(cyc)
+                cyc_dict['neg pulse flow'].append(round(mean_flow_neg))
+                cyc_dict['pos pulse flow'].append(round(mean_flow_pos))
+                cyc_dict['cycle flow'].append(round(cycle_flow))
                 cyc_dict["net eo flow"].append(round(net_EO_flow, 3))
                 cyc_dict["total flow"].append(round(total_flow, 3))
                 cyc_dict["net current"].append(round(net_current, 3))
