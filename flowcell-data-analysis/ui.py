@@ -175,7 +175,7 @@ class UserInterface:
 
             # remove flow cell designation from file name
             exp_name = file.split('/')[-1][:-3]
-            print(exp_name)
+            print(file.split('/')[-1])
 
             mf.insert(0, "file", exp_name)
             eo.insert(0, "file", exp_name)
@@ -272,6 +272,10 @@ class UserInterface:
         # Plot for comparing power consumption
         self.fom_boxplot(df=df, fom_list=['pulse energy consumption (Wh/L)', 'cycle energy consumption (Wh/L)'],
                          plot_name=f"{folder_name} power boxplot", y_label="Power [Wh/L]")
+
+        # Plot for comparing equivalent circuit resistance
+        self.fom_boxplot(df=df, fom_list=['Resistance (Ohms)'],
+                         plot_name=f"{folder_name} eq circuit boxplot", y_label="Equivalent RC Circuit - Resistance")
 
         self.boxplot_check.config(text="✓")
         print(f"Boxplot completed, output can be located at {self.output_folder}/figures/boxplot")

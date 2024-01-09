@@ -125,7 +125,6 @@ class DataPlot:
 
         Path(f"{figure_folder}/flow").mkdir(parents=True, exist_ok=True)
         Path(f"{figure_folder}/current").mkdir(parents=True, exist_ok=True)
-        print(df_filter)
         appv_abs = df_filter['appv'].abs().unique()[0]
 
         # Loop through all four variables of interest

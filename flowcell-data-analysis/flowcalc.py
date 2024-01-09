@@ -57,7 +57,7 @@ class FlowCalculator:
         # drop ignored ranges from comment file
         # add calculated columns
 
-        print(self.params)
+        #print(self.params)
 
         self.cycle_count()
         self.action_ignore()
@@ -115,7 +115,7 @@ class FlowCalculator:
                         sys.exit(1)
                     num = val[0].partition('mm')[0]  # if no space before mm
                     params['diameter'] = float(num) * 10 ** -3
-                    print('Diameter specified: %f m' % params['diameter'])
+                    # print('Diameter specified: %f m' % params['diameter'])
                 if line.startswith('Resistor'):
                     val = line.partition(":")[2].split()
                     if len(val) > 1 and val[1] != 'Ohm' and val[1] != 'ohm':
@@ -123,7 +123,7 @@ class FlowCalculator:
                         sys.exit(1)
                     num = val[0].partition('ohm')[0]  # if no space before ohm
                     params['resistor'] = float(num)
-                    print('Resistor specified: %f ohm' % params['resistor'])
+                    # print('Resistor specified: %f ohm' % params['resistor'])
 
                 # Parse materials from comment file
                 if line.startswith('Membrane'):
@@ -160,11 +160,11 @@ class FlowCalculator:
             sys.exit(1)
 
         if params['diameter'] is None:
-            print('Diameter not specified, using default value %f m' % default_diameter)
+            # print('Diameter not specified, using default value %f m' % default_diameter)
             params['diameter'] = default_diameter
 
         if params['resistor'] is None:
-            print('Resistor not specified, using default value %f ohm' % default_resistor)
+            # print('Resistor not specified, using default value %f ohm' % default_resistor)
             params['resistor'] = default_resistor
 
         return params
