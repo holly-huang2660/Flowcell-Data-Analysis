@@ -57,7 +57,7 @@ class FlowCalculator:
         # drop ignored ranges from comment file
         # add calculated columns
 
-        #print(self.params)
+        # print(self.params)
 
         self.cycle_count()
         self.action_ignore()
@@ -67,22 +67,6 @@ class FlowCalculator:
         self.raw_data["time"] = pd.to_datetime(self.raw_data["time"].str.replace("_", " "),
                                                errors='coerce')
         self.raw_data.dropna(axis=0, subset=['time'], ignore_index=True, inplace=True)
-
-        # Set up empty dictionary for the calculated results
-        self.EO_flow_dict = {"flow cell": [],
-                             "signal": [],
-                             "appv": [],
-                             "deltah": [],
-                             'pressure flow (v=0)': [],
-                             'pulse flow (+v)': [],
-                             'pulse flow (-v)': [],
-                             'cycle flow': [],
-                             "eo flow (+v)": [],
-                             "eo flow (-v)": [],
-                             "pulse energy (+v)": [],
-                             "pulse energy (-v)": [],
-                             "cycle energy": []
-                             }
 
     def parse_comments(self):
         params = {'period': None,
@@ -349,9 +333,18 @@ class FlowCalculator:
         pwr1_df.rename(columns={"pwr1": "power"}, inplace=True)
         pwr2_df.rename(columns={"pwr2": "power"}, inplace=True)
 
+        cur1_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["cur1"].mean()
+        cur2_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["cur2"].mean()
+
+        cur1_df.insert(0, "flow cell", self.cell_1)
+        cur2_df.insert(0, "flow cell", self.cell_2)
+        cur1_df.rename(columns={"cur1": "current"}, inplace=True)
+        cur2_df.rename(columns={"cur2": "current"}, inplace=True)
+
         pwr_df = pd.concat([pwr1_df, pwr2_df])
+        cur_df = pd.concat([cur1_df, cur2_df])
         flow_df = pd.concat([flow1_df, flow2_df])
-        flow_df = flow_df.merge(pwr_df)
+        flow_df = flow_df.merge(pwr_df).merge(cur_df)
 
         return flow_df
 
@@ -359,6 +352,24 @@ class FlowCalculator:
         # Takes flow_df from mean_flow_calculator and performs the following calculations:
         # Returns a new dataframe
         flow_df = self.mean_flow_calculator()
+
+        # Set up empty dictionary for the calculated results
+        EO_flow_dict = {"flow cell": [],
+                        "signal": [],
+                        "appv": [],
+                        "deltah": [],
+                        'pressure flow (v=0)': [],
+                        'pulse flow (+v)': [],
+                        'pulse flow (-v)': [],
+                        'cycle flow': [],
+                        "eo flow (+v)": [],
+                        "eo flow (-v)": [],
+                        "pulse energy (+v)": [],
+                        "pulse energy (-v)": [],
+                        "cycle energy": [],
+                        "cycle current": [],
+                        "cycle abs current": []
+                        }
 
         # List of unique conditions to filter for
         signal_list = list(flow_df["signal"].unique())
@@ -375,6 +386,11 @@ class FlowCalculator:
                                 & (flow_df["signal"] == signal)
                                 & (flow_df["flow cell"] == flowcell)
                         )]
+
+                        # Because the data is in 1 sec intervals
+                        # Integral of the variable over time is equivalent to the mean
+                        # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
+
                         pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
                         pulse_flow_pos = new_df.loc[(new_df["appv"] == voltage)]["mean flow"].mean()
                         pulse_flow_neg = new_df.loc[(new_df["appv"] == -voltage)]["mean flow"].mean()
@@ -387,23 +403,30 @@ class FlowCalculator:
                         pulse_energy_neg = new_df.loc[(new_df["appv"] == -voltage)]["power"].mean() / pulse_flow_neg
                         cycle_energy = (pulse_energy_pos + pulse_energy_neg) / 2
 
+                        pulse_cur_pos = new_df.loc[(new_df["appv"] == voltage)]["current"].mean()
+                        pulse_cur_neg = new_df.loc[(new_df["appv"] == -voltage)]["current"].mean()
+                        cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
+                        cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
+
                         # Only write to dictionary if it's not empty
                         if not np.isnan(pulse_flow_pos):
-                            self.EO_flow_dict["signal"].append(signal)
-                            self.EO_flow_dict["appv"].append(voltage)
-                            self.EO_flow_dict["deltah"].append(delta_h)
-                            self.EO_flow_dict["flow cell"].append(flowcell)
-                            self.EO_flow_dict["pressure flow (v=0)"].append(round(pressure_flow, 3))
-                            self.EO_flow_dict["pulse flow (+v)"].append(round(pulse_flow_pos, 3))
-                            self.EO_flow_dict["pulse flow (-v)"].append(round(pulse_flow_neg, 3))
-                            self.EO_flow_dict["cycle flow"].append(round(cycle_flow, 3))
-                            self.EO_flow_dict["eo flow (+v)"].append(round(eo_flow_pos, 3))
-                            self.EO_flow_dict["eo flow (-v)"].append(round(eo_flow_neg, 3))
-                            self.EO_flow_dict["pulse energy (+v)"].append(round(pulse_energy_pos, 3))
-                            self.EO_flow_dict["pulse energy (-v)"].append(round(pulse_energy_neg, 3))
-                            self.EO_flow_dict["cycle energy"].append(round(cycle_energy, 3))
+                            EO_flow_dict["signal"].append(signal)
+                            EO_flow_dict["appv"].append(voltage)
+                            EO_flow_dict["deltah"].append(delta_h)
+                            EO_flow_dict["flow cell"].append(flowcell)
+                            EO_flow_dict["pressure flow (v=0)"].append(round(pressure_flow, 3))
+                            EO_flow_dict["pulse flow (+v)"].append(round(pulse_flow_pos, 3))
+                            EO_flow_dict["pulse flow (-v)"].append(round(pulse_flow_neg, 3))
+                            EO_flow_dict["cycle flow"].append(round(cycle_flow, 3))
+                            EO_flow_dict["eo flow (+v)"].append(round(eo_flow_pos, 3))
+                            EO_flow_dict["eo flow (-v)"].append(round(eo_flow_neg, 3))
+                            EO_flow_dict["pulse energy (+v)"].append(round(pulse_energy_pos, 3))
+                            EO_flow_dict["pulse energy (-v)"].append(round(pulse_energy_neg, 3))
+                            EO_flow_dict["cycle energy"].append(round(cycle_energy, 3))
+                            EO_flow_dict["cycle current"].append(round(cycle_mean_cur, 3))
+                            EO_flow_dict["cycle abs current"].append(round(cycle_mean_cur_abs, 3))
 
-        eo_flow_df = pd.DataFrame(self.EO_flow_dict)
+        eo_flow_df = pd.DataFrame(EO_flow_dict)
         return eo_flow_df
 
     def FOM_calculator(self):
@@ -434,6 +457,8 @@ class FlowCalculator:
                'cycle pressure (m)': [],
                'pulse energy consumption (Wh/L)': [],
                'cycle energy consumption (Wh/L)': [],
+               'cycle current (A)': [],
+               'cycle abs current (A)': []
                }
 
         flow_df = self.eo_flow_calculator()
@@ -458,6 +483,8 @@ class FlowCalculator:
                     pulse_energy_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse energy (-v)"].mean()
                     cycle_flow = new_df.loc[(new_df["deltah"] == 0)]["cycle flow"].mean()
                     cycle_energy = new_df.loc[(new_df["deltah"] == 0)]["cycle energy"].mean()
+                    cycle_cur = new_df.loc[(new_df["deltah"] == 0)]["cycle current"].mean()
+                    cycle_abs_cur = new_df.loc[(new_df["deltah"] == 0)]["cycle abs current"].mean()
 
                     # Only write to dictionary if it's not empty
                     if not np.isnan(pulse_flow_neg):
@@ -510,7 +537,7 @@ class FlowCalculator:
                         FOM['flow cell'].append(flowcell)
                         FOM['signal'].append(signal)
                         FOM['appv'].append(voltage)
-                        FOM['pressure flow (h=0)'].append(pressure_flow)
+                        FOM['pressure flow (h=0)'].append(round(pressure_flow, 3))
                         FOM['neg pulse flow (h=0)'].append(round(pulse_flow_neg, 3))
                         FOM['pos pulse flow (h=0)'].append(round(pulse_flow_pos, 3))
                         FOM['cycle flow (h=0)'].append(round(cycle_flow, 3))
@@ -519,6 +546,8 @@ class FlowCalculator:
                         FOM['hydraulic permeability'].append(hydraulic_perm)
                         FOM['pulse pressure (m)'].append(pulse_pressure)
                         FOM['cycle pressure (m)'].append(cycle_pressure)
+                        FOM['cycle current (A)'].append(round(cycle_cur, 3))
+                        FOM['cycle abs current (A)'].append(round(cycle_abs_cur, 3))
 
         FOM = pd.DataFrame(FOM)
 

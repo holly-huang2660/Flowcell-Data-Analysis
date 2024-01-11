@@ -12,3 +12,8 @@ import openpyxl
 # click exit when you are done
 
 ui = UserInterface()
+
+# TODO: figure out a way to specify flow cells to ignore/drop
+# TODO: Cycle mean Current and Cycle mean absolute current
+# TODO: implement numpy trapz for integral calculation so the math is more intuitive and not assuming 1s intervals
+# TODO: plot of cycle flow and negative pulse flow vs. water column

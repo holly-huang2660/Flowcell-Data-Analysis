@@ -150,6 +150,9 @@ class UserInterface:
         self.label_folder_name.config(text='\n'.join(wrap(self.folder_path, 60)))
 
     def folder_summary(self):
+        # Make folder if it doesn't exist
+        Path(f"{self.output_folder}/summary").mkdir(parents=True, exist_ok=True)
+
         folder_name = self.folder_path.split("/")[-1]
         self.export_data_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} folder summary.xlsx")
 
