@@ -16,6 +16,7 @@ class DataPlot:
     def __init__(self, file_path):
         self.df = pd.DataFrame(columns=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
         self.file_name = []
+        pulse_df_list = []
 
         # for multiple files
         if len(file_path) > 1:
@@ -25,20 +26,26 @@ class DataPlot:
                 self.file_name.append(exp_name)
 
                 flow_calculator = FlowCalculator(file_path=exp)
+                # Get data for plotting pulse and cycle flow vs water column [m]
+                flow_data = flow_calculator.pulse_cycle_calculator()
+                pulse_df_list.append(flow_data)
+                self.pulse_df = pd.concat(pulse_df_list, ignore_index=True)
+
+                # Get raw data for avg and snapshot plot
                 raw_data = flow_calculator.raw_data
                 raw_data.drop(columns=['sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
                               inplace=True)
-
                 old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
                 new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
                 raw_data.rename(columns=new_cols, inplace=True)
-
                 merged = pd.merge(self.df, raw_data, how='right', on=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
                 self.df = merged
+
         else:  # processing a single file
             file_path = file_path[0]
             flow_calculator = FlowCalculator(file_path=file_path)
             self.df = flow_calculator.raw_data
+            self.pulse_df = flow_calculator.pulse_cycle_calculator()
             self.file_name = file_path.split("/")[-1]
 
         # # Drop any empty rows without values
@@ -61,7 +68,7 @@ class DataPlot:
         # Initiate default values for plotting and ask if user wants to change
         self.signal = 1
         self.deltah = 0
-        self.prompt_user_input()
+        # self.prompt_user_input()
 
         # Get column names
         self.col_names = [name for name in self.df.columns if
@@ -400,3 +407,28 @@ class DataPlot:
 
         # plt.show()
         plt.close()
+
+    def flow_vs_water_column(self, figure_folder='figures'):
+        df = self.pulse_df.loc[(self.pulse_df['signal'] == self.signal)]
+        df = df.copy()
+        df['deltah'] = df['deltah'] * 100  # convert height to cm
+
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=FIG_SIZE, layout='tight', sharex='all', sharey='all')
+        for cell in list(df['flow cell'].unique()):
+            cell_df = df.loc[(df['flow cell'] == cell)]
+            ax1.plot('deltah', 'cycle flow', '.-', data=cell_df, label=cell)
+        ax1.axhline(y=0, color='black', linestyle='--')
+        ax1.set_ylabel('Cycle Flow [L/h/m^2]')
+        ax1.set_xlabel('Water Column [cm]')
+        ax1.set_title('\n'.join(wrap(self.title_text, 60)), loc='left', fontsize=FONT_SIZE)
+        ax1.legend()
+
+        for cell in list(df['flow cell'].unique()):
+            cell_df = df.loc[(df['flow cell'] == cell)]
+            ax2.plot('deltah', 'pulse flow (-v)', '.-', data=cell_df, label=cell)
+        ax2.axhline(y=0, color='black', linestyle='--')
+        ax2.set_ylabel('Negative Pulse Flow [L/h/m^2]')
+        ax2.set_xlabel('Water Column [cm]')
+        ax2.legend()
+
+        fig.savefig(f"{figure_folder}/flow_vs_deltah_{self.title_text}.png", transparent=True)

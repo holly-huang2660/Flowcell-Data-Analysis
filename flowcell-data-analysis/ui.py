@@ -98,7 +98,8 @@ class UserInterface:
         self.file_sum_check.config(text="")
         self.file_plot_check.config(text="")
 
-        self.file_path = askopenfilenames(title="Select data files")
+        file_path = askopenfilenames(title="Select data files")
+        self.file_path = [f for f in file_path if ("." not in f and os.path.isfile(f))]
 
         file_name = []
         for file in self.file_path:
@@ -125,10 +126,8 @@ class UserInterface:
         data_plot = DataPlot(file_path=self.file_path)
         data_plot.cycle_avg_plot(figure_folder=f"{self.output_folder}/figures")
         data_plot.snapshot_plot(figure_folder=f"{self.output_folder}/figures")
-
-        # Only plot cycle average by flow cell if multiple data files were selected
-        if len(self.file_path) > 1:
-            data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
+        data_plot.flow_vs_water_column(figure_folder=f"{self.output_folder}/figures")
+        data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
 
         print(f"Plotting finished, figures are located in {self.output_folder}/figures")
         self.file_plot_check.config(text="✓")
@@ -173,7 +172,7 @@ class UserInterface:
         for file in file_list:
             flow_calculator = FlowCalculator(file_path=file)
             mf = flow_calculator.mean_flow_calculator()
-            eo = flow_calculator.eo_flow_calculator()
+            eo = flow_calculator.pulse_cycle_calculator()
             fom = flow_calculator.FOM_calculator()
 
             # remove flow cell designation from file name

@@ -270,7 +270,7 @@ class FlowCalculator:
 
         return flow_df
 
-    def eo_flow_calculator(self):
+    def pulse_cycle_calculator(self):
         # Takes flow_df from mean_flow_calculator and performs the following calculations:
         # Returns a new dataframe
         flow_df = self.mean_flow_calculator()
@@ -383,7 +383,7 @@ class FlowCalculator:
                'cycle abs current (A)': []
                }
 
-        flow_df = self.eo_flow_calculator()
+        flow_df = self.pulse_cycle_calculator()
         good_fit = 0.7  # cut-off for R^2 value
 
         # List of unique conditions to filter for
