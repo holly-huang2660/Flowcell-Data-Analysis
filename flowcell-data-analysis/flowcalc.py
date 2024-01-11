@@ -231,84 +231,6 @@ class FlowCalculator:
         df['pwr1'] = df['cur1'] * df["vtot1"]
         df['pwr2'] = df['cur2'] * df["vtot2"]
 
-    def boxplot_calculator(self, deltah=0):
-        # Calculates mean flow and mean current for each cycle
-        df = self.raw_data.copy()
-        df = df.loc[(
-                (df["signal"] != 0)
-                & (df["deltah"] == deltah)
-        )]
-
-        flow1_df = df.groupby(["signal", "deltah", "appv", "cyc"], as_index=False)["flow1"].mean()
-        flow2_df = df.groupby(["signal", "deltah", "appv", "cyc"], as_index=False)["flow2"].mean()
-
-        flow1_df.insert(0, "flow cell", self.cell_1)
-        flow2_df.insert(0, "flow cell", self.cell_2)
-        flow1_df.rename(columns={"flow1": "mean flow"}, inplace=True)
-        flow2_df.rename(columns={"flow2": "mean flow"}, inplace=True)
-
-        cur1_df = df.groupby(["signal", "deltah", "appv", "cyc"], as_index=False)["cur1"].mean()
-        cur2_df = df.groupby(["signal", "deltah", "appv", "cyc"], as_index=False)["cur2"].mean()
-
-        cur1_df.insert(0, "flow cell", self.cell_1)
-        cur2_df.insert(0, "flow cell", self.cell_2)
-        cur1_df.rename(columns={"cur1": "current"}, inplace=True)
-        cur2_df.rename(columns={"cur2": "current"}, inplace=True)
-
-        flow_df = pd.concat([flow1_df, flow2_df], ignore_index=True)
-        cur_df = pd.concat([cur1_df, cur2_df], ignore_index=True)
-        cycle_df = flow_df.merge(cur_df)
-
-        # Boxplot dataframe
-        cyc_dict = {"flow cell": [],
-                    "cycle": [],
-                    'neg pulse flow': [],
-                    'pos pulse flow': [],
-                    'cycle flow': [],
-                    "net eo flow": [],
-                    "total flow": [],
-                    "net current": [],
-                    "total current": []
-                    }
-
-        # List of unique conditions to filter for
-        cyc_list = cycle_df["cyc"].unique()
-
-        for flowcell in self.flowcell_list:
-            mean_flow_zero = cycle_df.loc[((cycle_df["appv"] == 0)
-                                           & (cycle_df["flow cell"] == flowcell))]["mean flow"].mean()
-            for cyc in cyc_list:
-                new_df = cycle_df.loc[((cycle_df["flow cell"] == flowcell) & (cycle_df["cyc"] == cyc))]
-
-                mean_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
-                mean_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
-
-                cycle_flow = (abs(mean_flow_pos) + abs(mean_flow_neg)) / 2
-
-                EO_flow_pos = (mean_flow_pos - mean_flow_zero)
-                EO_flow_neg = (mean_flow_neg - mean_flow_zero)
-                net_EO_flow = (EO_flow_pos + EO_flow_neg) / 2
-                total_flow = (abs(EO_flow_pos) + abs(EO_flow_neg)) / 2
-
-                current_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
-                current_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
-
-                net_current = (current_pos + current_neg)
-                total_current = (abs(current_pos) + abs(current_neg))
-
-                cyc_dict["flow cell"].append(flowcell)
-                cyc_dict["cycle"].append(cyc)
-                cyc_dict['neg pulse flow'].append(round(mean_flow_neg))
-                cyc_dict['pos pulse flow'].append(round(mean_flow_pos))
-                cyc_dict['cycle flow'].append(round(cycle_flow))
-                cyc_dict["net eo flow"].append(round(net_EO_flow, 3))
-                cyc_dict["total flow"].append(round(total_flow, 3))
-                cyc_dict["net current"].append(round(net_current, 3))
-                cyc_dict["total current"].append(round(total_current, 3))
-
-        boxplot_df = pd.DataFrame(cyc_dict)
-        return boxplot_df
-
     def mean_flow_calculator(self):
         # Calculates mean flow for each condition
         # Returns separate data frame file called flow_df to be used
@@ -530,7 +452,7 @@ class FlowCalculator:
                         score3 = reg.score(x, y3)
                         if (score3 >= good_fit) and (slope > 0):
                             cycle_pressure = -intercept / slope
-                            round(cycle_pressure, 3)
+                            cycle_pressure = round(cycle_pressure, 3)
                         else:
                             cycle_pressure = 'n/a'
 
