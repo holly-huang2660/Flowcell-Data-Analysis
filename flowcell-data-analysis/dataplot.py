@@ -69,7 +69,7 @@ class DataPlot:
         # Initiate default values for plotting and ask if user wants to change
         self.signal = 1
         self.deltah = 0
-        # self.prompt_user_input()
+        self.prompt_user_input()
 
         # Get column names
         self.col_names = [name for name in self.df.columns if
