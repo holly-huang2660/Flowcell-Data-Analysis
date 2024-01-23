@@ -15,13 +15,23 @@ FIG_SIZE = (6, 4)
 
 class DataPlot:
     def __init__(self, file_path):
-        self.df = pd.DataFrame(columns=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
-        self.file_name = []
-        pulse_df_list = []
+        # Processing the first file
+        flow_calculator = FlowCalculator(file_path=file_path[0])
+        self.df = flow_calculator.raw_data
+        self.pulse_df = flow_calculator.pulse_cycle_calculator()
+        self.file_name = [file_path[0].split("/")[-1]]
 
-        # for multiple files
+        cell_pair = file_path[0].split('/')[-1].split('_')[-1]
+        old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
+        new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
+        self.df.drop(columns=['sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
+                     inplace=True)
+        self.df.rename(columns=new_cols, inplace=True)
+
+        pulse_df_list = [self.pulse_df]
+        # Processing for multiple files
         if len(file_path) > 1:
-            for exp in file_path:
+            for exp in file_path[1:]:
                 exp_name = exp.split("/")[-1]
                 cell_pair = exp_name.split("_")[-1]
                 self.file_name.append(exp_name)
@@ -39,25 +49,13 @@ class DataPlot:
                 old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
                 new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
                 raw_data.rename(columns=new_cols, inplace=True)
+
                 merged = pd.merge(self.df, raw_data, how='right', on=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
                 self.df = merged
 
-        else:  # processing a single file
-            file_path = file_path[0]
-            flow_calculator = FlowCalculator(file_path=file_path)
-            self.df = flow_calculator.raw_data
-            self.pulse_df = flow_calculator.pulse_cycle_calculator()
-            self.file_name = file_path.split("/")[-1]
-
-        # # Drop any empty rows without values
-        # self.df.dropna(ignore_index=True, inplace=True)
-
         # Text for plot titles, auto-wrap ones that are too long
-        if type(self.file_name) is list:
-            self.title_text = self.file_name[0]
-            self.title_text = self.title_text[:-3]
-        else:
-            self.title_text = self.file_name
+        self.title_text = self.file_name[0]
+        self.title_text = self.title_text[:-3]
 
         # invert values for plotting
         # self.df["appv"] = self.df["appv"] * -1
@@ -196,9 +194,8 @@ class DataPlot:
                           )]
         df = df.copy()
         # construct relative time (min) column
-        start_time = df["time"].iloc[0]
-        df["rel time"] = df["time"] - start_time
-        df["rel time"] = df["rel time"].dt.total_seconds() / 60
+        df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
+        df["rel time"] = df["rel time"] / 60
 
         # Check for magnitude of applied voltage
         appv_abs = [n for n in df['appv'].abs().unique() if n != 0]
@@ -348,10 +345,9 @@ class DataPlot:
         df = df_filter.copy()
 
         # construct relative time (min) column
-        start_time = df["time"].iloc[0]
-        df["rel time"] = df["time"] - start_time
-        df["rel time"] = df["rel time"].dt.total_seconds() / 60
-        df.drop(df[df["rel time"] > 25].index, inplace=True)
+        df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
+        df["rel time"] = df["rel time"] / 60
+        # df.drop(df[df["rel time"] > 25].index, inplace=True)
 
         # # Check for magnitude of applied voltage
         # appv_abs = [n for n in df['appv'].abs().unique() if n != 0]
@@ -416,11 +412,19 @@ class DataPlot:
         sns.set_style("whitegrid")
 
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=FIG_SIZE, layout='tight', sharex='all', sharey='all')
+
+        # format marker differently for system 1 vs 2
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            # ax1.plot('deltah', 'cycle flow', '.-', data=cell_df, label=cell)
-            sns.regplot(data=cell_df, x='deltah', y='cycle flow',
-                        line_kws={'linestyle': '--'}, x_ci=None, ci=None, label=cell, ax=ax1)
+            if cell in 'POWY':
+                sns.regplot(data=cell_df, x='deltah', y='cycle flow',
+                            line_kws={'linestyle': '--'}, marker='o', x_ci=None, ci=None, label=cell, ax=ax1)
+        for cell in list(df['flow cell'].unique()):
+            cell_df = df.loc[(df['flow cell'] == cell)]
+            if cell in 'GBRK':
+                sns.regplot(data=cell_df, x='deltah', y='cycle flow',
+                            line_kws={'linestyle': '--'}, marker='^', x_ci=None, ci=None, label=cell, ax=ax1)
+
         ax1.axhline(y=0, color='black', linestyle='--')
         ax1.set_ylabel('Cycle Flow [L/h/m^2]')
         ax1.set_xlabel('Water Column [cm]')
@@ -429,9 +433,15 @@ class DataPlot:
 
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            # ax2.plot('deltah', 'pulse flow (-v)', '.-', data=cell_df, label=cell)
-            sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
-                        line_kws={'linestyle': '--'}, x_ci=None, ci=None, label=cell, ax=ax2)
+            if cell in 'POWY':
+                sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
+                            line_kws={'linestyle': '--'}, marker='o', x_ci=None, ci=None, label=cell, ax=ax2)
+        for cell in list(df['flow cell'].unique()):
+            cell_df = df.loc[(df['flow cell'] == cell)]
+            if cell in 'GBRK':
+                sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
+                            line_kws={'linestyle': '--'}, marker='^', x_ci=None, ci=None, label=cell, ax=ax2)
+
         ax2.axhline(y=0, color='black', linestyle='--')
         ax2.set_ylabel('Negative Pulse Flow [L/h/m^2]')
         ax2.set_xlabel('Water Column [cm]')

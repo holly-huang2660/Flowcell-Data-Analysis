@@ -222,13 +222,20 @@ class UserInterface:
 
         list1 = []
 
+        keep_flowcell = messagebox.askyesno("Plotting",
+                                         "Analyze flow cell pairs individually?\n"
+                                         "Default is to combine all flow cell pairs as a single experiment")
+
         for file in self.folder_file_list:
             # Calculate figures of merit
             flow_calculator = FlowCalculator(file_path=file)
             df1 = flow_calculator.FOM_calculator()
 
             # remove flow cell designation from file name
-            exp_name = file.split("/")[-1][:-3]
+            if keep_flowcell:
+                exp_name = file.split("/")[-1]
+            else:
+                exp_name = file.split("/")[-1][:-3]
             df1.insert(0, "file", exp_name)
             list1.append(df1)
 
@@ -277,7 +284,7 @@ class UserInterface:
 
         # Plot for comparing current density
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if 'current' in col],
-                         plot_name=f"{folder_name} current boxplot", y_label=r"Current [A/%m^{2}$]")
+                         plot_name=f"{folder_name} current boxplot", y_label=r"Current [A/$m^{2}$]")
 
         # Plot for comparing equivalent circuit resistance
         self.fom_boxplot(df=df, fom_list=['Resistance (Ohms)'],
@@ -289,7 +296,7 @@ class UserInterface:
     def fom_boxplot(self, df, fom_list, plot_name, y_label):
         sns.set_style("whitegrid")
         # Config figure size based on number of files in folder
-        fig_width = len(self.folder_file_list) * 0.85
+        fig_width = len(self.folder_file_list)
         fig_height = 4
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
         # Manually configurate box plot legend

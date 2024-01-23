@@ -51,22 +51,20 @@ class FlowCalculator:
                                     comment="#",
                                     on_bad_lines='skip'
                                     )
-
-        # raw data preprocessing:
-        # add cycle and phase count
-        # drop ignored ranges from comment file
-        # add calculated columns
-
         # print(self.params)
-
-        self.cycle_count()
-        self.action_ignore()
-        self.calc_columns()
 
         # Format time column for plotting, drop rows that cannot be parsed
         self.raw_data["time"] = pd.to_datetime(self.raw_data["time"].str.replace("_", " "),
                                                errors='coerce')
         self.raw_data.dropna(axis=0, subset=['time'], ignore_index=True, inplace=True)
+
+        # raw data preprocessing:
+        # add cycle and phase count
+        # drop ignored ranges from comment file
+        # add calculated columns
+        self.cycle_count()
+        self.action_ignore()
+        self.calc_columns()
 
     def parse_comments(self):
         params = {'period': None,
