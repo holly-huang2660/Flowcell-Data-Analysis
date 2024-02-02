@@ -252,7 +252,7 @@ class UserInterface:
                                                     f"Please enter label for experiment <{name}>:\n")
                 # shorten original file name for plotting, if no input detected use the default
                 if len(user_input) > 0:
-                    plot_label[name] = user_input
+                    plot_label[name] = '\n'.join(wrap(user_input, 15))
                 else:
                     exp_date = name.split('_')[0]
                     plot_label[name] = f"sample {exp_date}"
@@ -270,9 +270,9 @@ class UserInterface:
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if ('pulse flow' in col or 'cycle flow' in col)],
                          plot_name=f"{folder_name} flow boxplot", y_label=r"Flow [L/h/$m^{2}$]")
 
-        # Plot for comparing pressure (hydrostatic head, m)
+        # Plot for comparing permeability
         self.fom_boxplot(df=df, fom_list=['hydraulic permeability'],
-                         plot_name=f"{folder_name} perm boxplot", y_label=r"Hydrostatic Permeability")
+                         plot_name=f"{folder_name} perm boxplot", y_label="Hydraulic Permeability")
 
         # Plot for comparing pressure (hydrostatic head, m)
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if ('pressure' in col and 'flow' not in col)],

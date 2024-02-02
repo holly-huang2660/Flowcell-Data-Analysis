@@ -217,6 +217,9 @@ class FlowCalculator:
 
         df = self.raw_data
 
+        # Add in relative time column
+        df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
+
         # specific flow in units of L/hour/m^2
         df['flow1'] = df["sli1"] * unit_conversion / cell_area
         df['flow2'] = df["sli2"] * unit_conversion / cell_area
@@ -309,7 +312,7 @@ class FlowCalculator:
 
                         # Because the data is in 1 sec intervals
                         # Integral of the variable over time is equivalent to the mean
-                        # Trapezoidal rule (b-a)*[y(A/m^2)+y(b)]/2 = 1/2*[y(A/m^2) + y(b)]
+                        # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
 
                         pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
                         pulse_flow_pos = new_df.loc[(new_df["appv"] == voltage)]["mean flow"].mean()

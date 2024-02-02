@@ -12,5 +12,3 @@ import openpyxl
 # click exit when you are done
 
 ui = UserInterface()
-
-# TODO: add counter column to raw data so experiments ran at different times but with the same voltage profiles can be merged

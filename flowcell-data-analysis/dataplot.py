@@ -16,41 +16,21 @@ FIG_SIZE = (6, 4)
 class DataPlot:
     def __init__(self, file_path):
         # Processing the first file
-        flow_calculator = FlowCalculator(file_path=file_path[0])
-        self.df = flow_calculator.raw_data
-        self.pulse_df = flow_calculator.pulse_cycle_calculator()
-        self.file_name = [file_path[0].split("/")[-1]]
-
-        cell_pair = file_path[0].split('/')[-1].split('_')[-1]
-        old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
-        new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
-        self.df.drop(columns=['sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
-                     inplace=True)
-        self.df.rename(columns=new_cols, inplace=True)
+        self.df, self.pulse_df, self.file_name = self.data_preprocessing(exp=file_path[0])
 
         pulse_df_list = [self.pulse_df]
+
         # Processing for multiple files
         if len(file_path) > 1:
             for exp in file_path[1:]:
-                exp_name = exp.split("/")[-1]
-                cell_pair = exp_name.split("_")[-1]
-                self.file_name.append(exp_name)
+                df, pulse_df, file_name = self.data_preprocessing(exp=exp)
 
-                flow_calculator = FlowCalculator(file_path=exp)
                 # Get data for plotting pulse and cycle flow vs water column [m]
-                flow_data = flow_calculator.pulse_cycle_calculator()
-                pulse_df_list.append(flow_data)
+                pulse_df_list.append(pulse_df)
                 self.pulse_df = pd.concat(pulse_df_list, ignore_index=True)
 
                 # Get raw data for avg and snapshot plot
-                raw_data = flow_calculator.raw_data
-                raw_data.drop(columns=['sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
-                              inplace=True)
-                old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
-                new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
-                raw_data.rename(columns=new_cols, inplace=True)
-
-                merged = pd.merge(self.df, raw_data, how='right', on=['time', 'appv', 'signal', 'deltah', 'cnt', 'cyc'])
+                merged = pd.merge(self.df, df, how='left', on=['signal', 'deltah', 'appv', 'cnt', 'cyc'])
                 self.df = merged
 
         # Text for plot titles, auto-wrap ones that are too long
@@ -72,6 +52,22 @@ class DataPlot:
         # Get column names
         self.col_names = [name for name in self.df.columns if
                           ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
+
+    def data_preprocessing(self, exp):
+        # Processing the first file
+        flow_calculator = FlowCalculator(file_path=exp)
+        df = flow_calculator.raw_data
+        pulse_df = flow_calculator.pulse_cycle_calculator()
+        file_name = [exp.split("/")[-1]]
+
+        cell_pair = exp.split('/')[-1].split('_')[-1]
+        old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
+        new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
+        df.drop(columns=['time', 'rel time', 'sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
+                inplace=True)
+        df.rename(columns=new_cols, inplace=True)
+        df.drop(df[df['signal'] == 0].index, inplace=True)
+        return df, pulse_df, file_name
 
     def prompt_user_input(self):
         signal_list = self.df["signal"].unique()
@@ -194,12 +190,13 @@ class DataPlot:
                           )]
         df = df.copy()
         # construct relative time (min) column
-        df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
-        df["rel time"] = df["rel time"] / 60
+        # df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
+        # df["rel time"] = df["rel time"] / 60
 
         # Check for magnitude of applied voltage
         appv_abs = [n for n in df['appv'].abs().unique() if n != 0]
         appv_abs = appv_abs[0]
+
 
         # group data by voltage, assign NaN values to avoid connecting line between cycles
         zero_v = df.copy()
@@ -220,9 +217,9 @@ class DataPlot:
             fig, ax = plt.subplots(figsize=FIG_SIZE, layout="tight")
 
             # plot the average flow and current
-            ax.plot("rel time", y, '.-', data=pos_v, label=f"{appv_abs} V", markersize=2, linewidth=1, color='#1f77b4')
-            ax.plot("rel time", y, 'k--', data=zero_v, label="0 V", markersize=2, linewidth=1)
-            ax.plot("rel time", y, '.-', data=neg_v, label=f"-{appv_abs} V", markersize=2, linewidth=1, color='#ff7f0e')
+            ax.plot(pos_v.index, pos_v[y], '.-', label=f"+{appv_abs} V", markersize=2, linewidth=1, color='#1f77b4')
+            ax.plot(zero_v.index, zero_v[y], 'k--', label="0 V", markersize=2, linewidth=1)
+            ax.plot(neg_v.index, neg_v[y], '.-', label=f"-{appv_abs} V", markersize=2, linewidth=1, color='#ff7f0e')
 
             # Auto-scale y-axis
             # Find max value to be used as y-axis limits (+10% margin), force symmetrical axis
@@ -230,9 +227,9 @@ class DataPlot:
             ax.set_ylim(ymax * -1, ymax)
 
             # plot the standard deviation
-            ax.errorbar(pos_v["rel time"], pos_v[y], fmt='.', yerr=pos_v[std], capsize=2, markersize=2,
+            ax.errorbar(pos_v.index, pos_v[y], fmt='.', yerr=pos_v[std], capsize=2, markersize=2,
                         linewidth=1, color='#1f77b4', alpha=0.1)
-            ax.errorbar(neg_v["rel time"], neg_v[y], fmt='.', yerr=neg_v[std], capsize=2, markersize=2,
+            ax.errorbar(neg_v.index, neg_v[y], fmt='.', yerr=neg_v[std], capsize=2, markersize=2,
                         linewidth=1, color='#ff7f0e', alpha=0.1)
 
             ax.legend(loc="upper right", fontsize=FONT_SIZE, labelspacing=0.2)
@@ -243,8 +240,7 @@ class DataPlot:
             elif "cur" in y:
                 plt.ylabel(r"Current [A/$m^{2}$]", fontsize=FONT_SIZE)
 
-            ax.set_xlim([0, 25])
-            ax.set_xlabel("Time [mins]", fontsize=FONT_SIZE)
+            ax.set_xlabel("Time [s]", fontsize=FONT_SIZE)
 
             if "flow" in y:
                 fig.savefig(
@@ -345,8 +341,8 @@ class DataPlot:
         df = df_filter.copy()
 
         # construct relative time (min) column
-        df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
-        df["rel time"] = df["rel time"] / 60
+        # df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
+        # df["rel time"] = df["rel time"] / 60
         # df.drop(df[df["rel time"] > 25].index, inplace=True)
 
         # # Check for magnitude of applied voltage
@@ -373,7 +369,7 @@ class DataPlot:
                 label_text = y[-1]
 
             if "flow" in y:
-                ax1.plot('rel time', y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
+                ax1.plot(y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
                 # ax1.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=neg_v, markersize=2, linewidth=1, label=label_text)
@@ -381,7 +377,7 @@ class DataPlot:
                 ax1.set_ylabel(r"Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
 
             elif "cur" in y:
-                ax2.plot('rel time', y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
+                ax2.plot(y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
                 # ax2.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=neg_v, markersize=2, linewidth=1, label=label_text)
@@ -391,7 +387,7 @@ class DataPlot:
         # Plot formatting
         for ax in (ax1, ax2):
             ax.legend(loc="upper right", fontsize=FONT_SIZE, labelspacing=0.2)
-            ax.set_xlabel("Time [min]", fontsize=FONT_SIZE)
+            ax.set_xlabel("Time", fontsize=FONT_SIZE)
             ax.set_title('\n'.join(wrap(self.title_text, 50)), loc='left', fontsize=FONT_SIZE)
             ax.grid(visible=True)
 
