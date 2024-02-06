@@ -316,10 +316,10 @@ class FlowCalculator:
                     else:
                         appv = '/'.join([str(n) for n in appv])
 
-                    # calculate duty cycle
+                    # calculate duty cycle as % of time NEGATIVE voltage is applied, ignoring the first cycle
                     df = self.raw_data.copy()
                     df = df.loc[((df["signal"] == signal) & (df["deltah"] == delta_h) & (df["cyc"] > 1))]
-                    duty_cycle = df.loc[(df['appv'] > 0)]['appv'].count() / df.loc[(df['appv'] != 0)]['appv'].count()
+                    duty_cycle = df.loc[(df['appv'] < 0)]['appv'].count() / df.loc[(df['appv'] != 0)]['appv'].count()
 
                     # Because the data is in 1 sec intervals
                     # Integral of the variable over time is equivalent to the mean
@@ -341,8 +341,8 @@ class FlowCalculator:
                     cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
 
                     # modify cycle calculation  for duty cycle != 50%
-                    cycle_flow = pulse_flow_pos * duty_cycle + pulse_flow_neg * (1 - duty_cycle)
-                    cycle_energy = pulse_energy_pos * duty_cycle + pulse_energy_neg * (1-duty_cycle)
+                    cycle_flow = pulse_flow_pos * (1-duty_cycle) + pulse_flow_neg * duty_cycle
+                    cycle_energy = pulse_energy_pos * (1-duty_cycle) + pulse_energy_neg * duty_cycle
 
                     # Only write to dictionary if it's not empty
                     if not np.isnan(pulse_flow_pos):
@@ -385,6 +385,7 @@ class FlowCalculator:
         FOM = {'flow cell': [],
                'signal': [],
                'appv': [],
+               'duty cycle': [],
                'pressure flow (L/h/m^2)': [],
                'neg pulse flow (L/h/m^2)': [],
                'pos pulse flow (L/h/m^2)': [],
@@ -413,6 +414,8 @@ class FlowCalculator:
                             & (flow_df["signal"] == signal)
                             & (flow_df["flow cell"] == flowcell)
                     )]
+
+                    duty_cycle = new_df.loc[(new_df["deltah"] == 0)]["duty cycle"].mean()
 
                     pressure_flow = new_df.loc[(new_df["deltah"] == 0)]["pressure flow (v=0)"].mean()
                     pulse_flow_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse flow (-v)"].mean()
@@ -474,6 +477,7 @@ class FlowCalculator:
                         FOM['flow cell'].append(flowcell)
                         FOM['signal'].append(signal)
                         FOM['appv'].append(voltage)
+                        FOM['duty cycle'].append(round(duty_cycle, 3))
                         FOM['pressure flow (L/h/m^2)'].append(round(pressure_flow, 3))
                         FOM['neg pulse flow (L/h/m^2)'].append(round(pulse_flow_neg, 3))
                         FOM['pos pulse flow (L/h/m^2)'].append(round(pulse_flow_pos, 3))
