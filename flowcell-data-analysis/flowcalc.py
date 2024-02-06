@@ -342,7 +342,7 @@ class FlowCalculator:
 
                     # modify cycle calculation  for duty cycle != 50%
                     cycle_flow = pulse_flow_pos * duty_cycle + pulse_flow_neg * (1 - duty_cycle)
-                    cycle_energy = pulse_energy_pos*duty_cycle + pulse_flow_neg*(1-duty_cycle)
+                    cycle_energy = pulse_energy_pos * duty_cycle + pulse_energy_neg * (1-duty_cycle)
 
                     # Only write to dictionary if it's not empty
                     if not np.isnan(pulse_flow_pos):
