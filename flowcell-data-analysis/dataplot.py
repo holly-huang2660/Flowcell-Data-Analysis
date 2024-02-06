@@ -127,20 +127,22 @@ class DataPlot:
 
         Path(f"{figure_folder}/flow").mkdir(parents=True, exist_ok=True)
         Path(f"{figure_folder}/current").mkdir(parents=True, exist_ok=True)
-        appv_abs = df_filter['appv'].abs().unique()[0]
+        appv_list = df_filter['appv'].unique()
+        pos_appv = [n for n in appv_list if n > 0]
+        neg_appv = [n for n in appv_list if n < 0]
 
         # Loop through all four variables of interest
         y_var = {'flow_avg': 'flow_std', 'cur_avg': 'cur_std'}
         fig1, ax1 = plt.subplots(figsize=FIG_SIZE, layout="tight")
         fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
 
-        pos_pulse = df.loc[(df["appv"] == appv_abs)]
-        neg_pulse = df.loc[(df["appv"] == -appv_abs)]
+        pos_pulse = df.loc[(df["appv"] == pos_appv[0])]
+        neg_pulse = df.loc[(df["appv"] == neg_appv[0])]
 
         for y, std in y_var.items():
             if "flow" in y:
-                ax1.plot(y, '.-', data=pos_pulse, label=f"{appv_abs} V", markersize=2, linewidth=1, color='#1f77b4')
-                ax1.plot(y, '.-', data=neg_pulse, label=f"-{appv_abs} V", markersize=2, linewidth=1, color='#ff7f0e')
+                ax1.plot(y, '.-', data=pos_pulse, label=f"+{pos_appv[0]} V", markersize=2, linewidth=1, color='#1f77b4')
+                ax1.plot(y, '.-', data=neg_pulse, label=f"{neg_appv[0]} V", markersize=2, linewidth=1, color='#ff7f0e')
 
                 ax1.errorbar(pos_pulse.index, pos_pulse[y], fmt='.', yerr=pos_pulse[std], capsize=2, markersize=2,
                              linewidth=1, color='#1f77b4', alpha=0.3)
@@ -148,8 +150,8 @@ class DataPlot:
                              linewidth=1, color='#ff7f0e', alpha=0.3)
                 plt.ylabel(r"Avg Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
             elif "cur" in y:
-                ax2.plot(y, '.-', data=pos_pulse, label=f"{appv_abs} V", markersize=2, linewidth=1, color='#1f77b4')
-                ax2.plot(y, '.-', data=neg_pulse, label=f"-{appv_abs} V", markersize=2, linewidth=1, color='#ff7f0e')
+                ax2.plot(y, '.-', data=pos_pulse, label=f"{pos_appv[0]} V", markersize=2, linewidth=1, color='#1f77b4')
+                ax2.plot(y, '.-', data=neg_pulse, label=f"{neg_appv[0]} V", markersize=2, linewidth=1, color='#ff7f0e')
 
                 ax2.errorbar(pos_pulse.index, pos_pulse[y], fmt='.', yerr=pos_pulse[std], capsize=2, markersize=2,
                              linewidth=1, color='#1f77b4', alpha=0.3)
@@ -194,17 +196,18 @@ class DataPlot:
         # df["rel time"] = df["rel time"] / 60
 
         # Check for magnitude of applied voltage
-        appv_abs = [n for n in df['appv'].abs().unique() if n != 0]
-        appv_abs = appv_abs[0]
+        appv_abs = [n for n in df['appv'].unique() if n != 0]
+        pos_appv = [appv for appv in appv_abs if appv > 0]
+        neg_appv = [appv for appv in appv_abs if appv < 0]
 
 
         # group data by voltage, assign NaN values to avoid connecting line between cycles
         zero_v = df.copy()
         zero_v[zero_v["appv"] != 0] = np.nan
         pos_v = df.copy()
-        pos_v[pos_v["appv"] != appv_abs] = np.nan
+        pos_v[pos_v["appv"] != pos_appv[0]] = np.nan
         neg_v = df.copy()
-        neg_v[neg_v["appv"] != -appv_abs] = np.nan
+        neg_v[neg_v["appv"] != neg_appv[0]] = np.nan
 
         # Variables of interest
         y_var = {'flow_avg': 'flow_std', 'cur_avg': 'cur_std'}
@@ -217,9 +220,9 @@ class DataPlot:
             fig, ax = plt.subplots(figsize=FIG_SIZE, layout="tight")
 
             # plot the average flow and current
-            ax.plot(pos_v.index, pos_v[y], '.-', label=f"+{appv_abs} V", markersize=2, linewidth=1, color='#1f77b4')
+            ax.plot(pos_v.index, pos_v[y], '.-', label=f"+{pos_appv[0]} V", markersize=2, linewidth=1, color='#1f77b4')
             ax.plot(zero_v.index, zero_v[y], 'k--', label="0 V", markersize=2, linewidth=1)
-            ax.plot(neg_v.index, neg_v[y], '.-', label=f"-{appv_abs} V", markersize=2, linewidth=1, color='#ff7f0e')
+            ax.plot(neg_v.index, neg_v[y], '.-', label=f"{neg_appv[0]} V", markersize=2, linewidth=1, color='#ff7f0e')
 
             # Auto-scale y-axis
             # Find max value to be used as y-axis limits (+10% margin), force symmetrical axis
@@ -322,9 +325,11 @@ class DataPlot:
 
         Path(f"{figure_folder}/cycle average").mkdir(parents=True, exist_ok=True)
 
-        fig1.savefig(f"{figure_folder}/cycle average/flowcell_flow_avg_{self.title_text}.png",
+        fig1.savefig(f"{figure_folder}/cycle average/flowcell_flow_avg_{self.title_text}"
+                     f"_sig{self.signal}_h{self.deltah}.png",
                      transparent=True)
-        fig2.savefig(f"{figure_folder}/cycle average/flowcell_cur_avg_{self.title_text}.png",
+        fig2.savefig(f"{figure_folder}/cycle average/flowcell_cur_avg_{self.title_text}"
+                     f"_sig{self.signal}_h{self.deltah}.png",
                      transparent=True)
 
         # plt.show()
@@ -443,4 +448,6 @@ class DataPlot:
         ax2.set_xlabel('Water Column [cm]')
         ax2.legend()
 
-        fig.savefig(f"{figure_folder}/flow_vs_deltah_{self.title_text}.png", transparent=True)
+        Path(f"{figure_folder}/water column").mkdir(parents=True, exist_ok=True)
+        fig.savefig(f"{figure_folder}/water column/flow_vs_deltah_{self.title_text}_sig{self.signal}_h{self.deltah}.png",
+                    transparent=True)

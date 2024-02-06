@@ -60,10 +60,10 @@ class FlowCalculator:
 
         # raw data preprocessing:
         # add cycle and phase count
-        # drop ignored ranges from comment file
-        # add calculated columns
         self.cycle_count()
+        # drop ignored ranges from comment file
         self.action_ignore()
+        # add calculated columns
         self.calc_columns()
 
     def parse_comments(self):
@@ -281,6 +281,7 @@ class FlowCalculator:
                         "signal": [],
                         "appv": [],
                         "deltah": [],
+                        'duty cycle': [],
                         'pressure flow (v=0)': [],
                         'pulse flow (+v)': [],
                         'pulse flow (-v)': [],
@@ -297,57 +298,70 @@ class FlowCalculator:
         # List of unique conditions to filter for
         signal_list = list(flow_df["signal"].unique())
         delta_h_list = list(flow_df["deltah"].unique())
-        voltage_list = list(flow_df['appv'].abs().unique())
-        voltage_list = [n for n in voltage_list if n > 0]
 
         for flowcell in self.flowcell_list:
             for signal in signal_list:
                 for delta_h in delta_h_list:
-                    for voltage in voltage_list:
-                        new_df = flow_df.loc[(
-                                (flow_df["deltah"] == delta_h)
-                                & (flow_df["signal"] == signal)
-                                & (flow_df["flow cell"] == flowcell)
-                        )]
+                    new_df = flow_df.loc[(
+                            (flow_df["deltah"] == delta_h)
+                            & (flow_df["signal"] == signal)
+                            & (flow_df["flow cell"] == flowcell)
+                    )]
+                    # list voltages applied
+                    # If symmetrical record only the magnitude appv
+                    # else record in the format of 'pos v/neg v'
+                    appv = [appv for appv in list(new_df['appv'].unique()) if appv != 0]
+                    if sum(appv) == 0:
+                        appv = abs(appv[0])
+                    else:
+                        appv = '/'.join([str(n) for n in appv])
 
-                        # Because the data is in 1 sec intervals
-                        # Integral of the variable over time is equivalent to the mean
-                        # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
+                    # calculate duty cycle
+                    df = self.raw_data.copy()
+                    df = df.loc[((df["signal"] == signal) & (df["deltah"] == delta_h) & (df["cyc"] > 1))]
+                    duty_cycle = df.loc[(df['appv'] > 0)]['appv'].count() / df.loc[(df['appv'] != 0)]['appv'].count()
 
-                        pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
-                        pulse_flow_pos = new_df.loc[(new_df["appv"] == voltage)]["mean flow"].mean()
-                        pulse_flow_neg = new_df.loc[(new_df["appv"] == -voltage)]["mean flow"].mean()
-                        cycle_flow = (pulse_flow_pos + pulse_flow_neg) / 2
+                    # Because the data is in 1 sec intervals
+                    # Integral of the variable over time is equivalent to the mean
+                    # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
 
-                        eo_flow_pos = pulse_flow_pos - pressure_flow
-                        eo_flow_neg = pulse_flow_neg - pressure_flow
+                    pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
+                    pulse_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
+                    pulse_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
 
-                        pulse_energy_pos = new_df.loc[(new_df["appv"] == voltage)]["power"].mean() / pulse_flow_pos
-                        pulse_energy_neg = new_df.loc[(new_df["appv"] == -voltage)]["power"].mean() / pulse_flow_neg
-                        cycle_energy = (pulse_energy_pos + pulse_energy_neg) / 2
+                    eo_flow_pos = pulse_flow_pos - pressure_flow
+                    eo_flow_neg = pulse_flow_neg - pressure_flow
 
-                        pulse_cur_pos = new_df.loc[(new_df["appv"] == voltage)]["current"].mean()
-                        pulse_cur_neg = new_df.loc[(new_df["appv"] == -voltage)]["current"].mean()
-                        cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
-                        cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
+                    pulse_energy_pos = new_df.loc[(new_df["appv"] > 0)]["power"].mean() / pulse_flow_pos
+                    pulse_energy_neg = new_df.loc[(new_df["appv"] < 0)]["power"].mean() / pulse_flow_neg
 
-                        # Only write to dictionary if it's not empty
-                        if not np.isnan(pulse_flow_pos):
-                            EO_flow_dict["signal"].append(signal)
-                            EO_flow_dict["appv"].append(voltage)
-                            EO_flow_dict["deltah"].append(delta_h)
-                            EO_flow_dict["flow cell"].append(flowcell)
-                            EO_flow_dict["pressure flow (v=0)"].append(round(pressure_flow, 3))
-                            EO_flow_dict["pulse flow (+v)"].append(round(pulse_flow_pos, 3))
-                            EO_flow_dict["pulse flow (-v)"].append(round(pulse_flow_neg, 3))
-                            EO_flow_dict["cycle flow"].append(round(cycle_flow, 3))
-                            EO_flow_dict["eo flow (+v)"].append(round(eo_flow_pos, 3))
-                            EO_flow_dict["eo flow (-v)"].append(round(eo_flow_neg, 3))
-                            EO_flow_dict["pulse energy (+v)"].append(round(pulse_energy_pos, 3))
-                            EO_flow_dict["pulse energy (-v)"].append(round(pulse_energy_neg, 3))
-                            EO_flow_dict["cycle energy"].append(round(cycle_energy, 3))
-                            EO_flow_dict["cycle current"].append(round(cycle_mean_cur, 3))
-                            EO_flow_dict["cycle abs current"].append(round(cycle_mean_cur_abs, 3))
+                    pulse_cur_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
+                    pulse_cur_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
+                    cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
+                    cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
+
+                    # modify cycle calculation  for duty cycle != 50%
+                    cycle_flow = pulse_flow_pos * duty_cycle + pulse_flow_neg * (1 - duty_cycle)
+                    cycle_energy = pulse_energy_pos*duty_cycle + pulse_flow_neg*(1-duty_cycle)
+
+                    # Only write to dictionary if it's not empty
+                    if not np.isnan(pulse_flow_pos):
+                        EO_flow_dict["signal"].append(signal)
+                        EO_flow_dict["appv"].append(appv)
+                        EO_flow_dict["deltah"].append(delta_h)
+                        EO_flow_dict['duty cycle'].append(round(duty_cycle, 3))
+                        EO_flow_dict["flow cell"].append(flowcell)
+                        EO_flow_dict["pressure flow (v=0)"].append(round(pressure_flow, 3))
+                        EO_flow_dict["pulse flow (+v)"].append(round(pulse_flow_pos, 3))
+                        EO_flow_dict["pulse flow (-v)"].append(round(pulse_flow_neg, 3))
+                        EO_flow_dict["cycle flow"].append(round(cycle_flow, 3))
+                        EO_flow_dict["eo flow (+v)"].append(round(eo_flow_pos, 3))
+                        EO_flow_dict["eo flow (-v)"].append(round(eo_flow_neg, 3))
+                        EO_flow_dict["pulse energy (+v)"].append(round(pulse_energy_pos, 3))
+                        EO_flow_dict["pulse energy (-v)"].append(round(pulse_energy_neg, 3))
+                        EO_flow_dict["cycle energy"].append(round(cycle_energy, 3))
+                        EO_flow_dict["cycle current"].append(round(cycle_mean_cur, 3))
+                        EO_flow_dict["cycle abs current"].append(round(cycle_mean_cur_abs, 3))
 
         eo_flow_df = pd.DataFrame(EO_flow_dict)
         return eo_flow_df
