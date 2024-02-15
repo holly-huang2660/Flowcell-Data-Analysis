@@ -12,6 +12,7 @@ dataexp.py
 scratchpad.py
 .gitignore
 .csv
+SLI pump plotting.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
