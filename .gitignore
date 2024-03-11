@@ -10,6 +10,7 @@ circuit fitting results.csv
 RRC_diode_fitting_results.xlsx
 dataexp.py
 scratchpad.py
+equivalent-circuit/fit_current_flow_diode.py
 .gitignore
 .csv
 SLI pump plotting.py

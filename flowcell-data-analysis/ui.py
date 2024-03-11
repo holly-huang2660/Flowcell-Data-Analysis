@@ -126,8 +126,10 @@ class UserInterface:
         data_plot = DataPlot(file_path=self.file_path)
         data_plot.cycle_avg_plot(figure_folder=f"{self.output_folder}/figures")
         data_plot.snapshot_plot(figure_folder=f"{self.output_folder}/figures")
+        data_plot.snapshot_by_flowcell(figure_folder=f"{self.output_folder}/figures")
         data_plot.flow_vs_water_column(figure_folder=f"{self.output_folder}/figures")
         data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
+
 
         print(f"Plotting finished, figures are located in {self.output_folder}/figures")
         self.file_plot_check.config(text="✓")
@@ -266,34 +268,43 @@ class UserInterface:
 
         folder_name = self.folder_path.split("/")[-1]
 
+        # prompt user for graph title
+        graph_title = simpledialog.askstring("Plot title", f"Please enter plot title:\n")
+
         # Plot for comparing flow
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if ('pulse flow' in col or 'cycle flow' in col)],
-                         plot_name=f"{folder_name} flow boxplot", y_label=r"Flow [L/h/$m^{2}$]")
+                         plot_name=f"{folder_name} flow boxplot", y_label=r"Flow [L/h/$m^{2}$]",
+                         graph_title=graph_title)
 
         # Plot for comparing permeability
         self.fom_boxplot(df=df, fom_list=['hydraulic permeability'],
-                         plot_name=f"{folder_name} perm boxplot", y_label="Hydraulic Permeability")
+                         plot_name=f"{folder_name} perm boxplot", y_label="Hydraulic Permeability",
+                         graph_title=graph_title)
 
         # Plot for comparing pressure (hydrostatic head, m)
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if ('pressure' in col and 'flow' not in col)],
-                         plot_name=f"{folder_name} pressure boxplot", y_label=r"Water Column [m]")
+                         plot_name=f"{folder_name} pressure boxplot", y_label=r"Water Column [m]",
+                         graph_title=graph_title)
 
         # Plot for comparing power consumption
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if 'energy' in col],
-                         plot_name=f"{folder_name} power boxplot", y_label="Power [Wh/L]")
+                         plot_name=f"{folder_name} power boxplot", y_label="Power [Wh/L]",
+                         graph_title=graph_title)
 
         # Plot for comparing current density
         self.fom_boxplot(df=df, fom_list=[col for col in df.columns if 'current' in col],
-                         plot_name=f"{folder_name} current boxplot", y_label=r"Current [A/$m^{2}$]")
+                         plot_name=f"{folder_name} current boxplot", y_label=r"Current [A/$m^{2}$]",
+                         graph_title=graph_title)
 
         # Plot for comparing equivalent circuit resistance
         self.fom_boxplot(df=df, fom_list=['Resistance (Ohms)'],
-                         plot_name=f"{folder_name} eq circuit boxplot", y_label="Equivalent RC Circuit - Resistance")
+                         plot_name=f"{folder_name} eq circuit boxplot", y_label="Equivalent RC Circuit - Resistance",
+                         graph_title=graph_title)
 
         self.boxplot_check.config(text="✓")
         print(f"Boxplot completed, output can be located at {self.output_folder}/figures/boxplot")
 
-    def fom_boxplot(self, df, fom_list, plot_name, y_label):
+    def fom_boxplot(self, df, fom_list, plot_name, y_label, graph_title):
         sns.set_style("whitegrid")
         # Config figure size based on number of files in folder
         fig_width = len(self.folder_file_list)
@@ -318,6 +329,8 @@ class UserInterface:
         ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
         plt.xticks(wrap=True)
         plt.ylabel(y_label)
+
+        plt.title(graph_title, fontsize=12)
 
         fig.savefig(f"{self.output_folder}/figures/boxplot/{plot_name}.png",
                     bbox_inches='tight',

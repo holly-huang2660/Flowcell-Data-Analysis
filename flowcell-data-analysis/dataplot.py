@@ -36,6 +36,7 @@ class DataPlot:
         # Text for plot titles, auto-wrap ones that are too long
         self.title_text = self.file_name[0]
         self.title_text = self.title_text[:-3]
+        self.exp_date = self.title_text.split('_')[0]
 
         # invert values for plotting
         # self.df["appv"] = self.df["appv"] * -1
@@ -67,6 +68,7 @@ class DataPlot:
                 inplace=True)
         df.rename(columns=new_cols, inplace=True)
         df.drop(df[df['signal'] == 0].index, inplace=True)
+        df.drop_duplicates(subset=['appv', 'deltah', 'signal', 'cnt', 'cyc'], inplace=True)
         return df, pulse_df, file_name
 
     def prompt_user_input(self):
@@ -84,6 +86,8 @@ class DataPlot:
             else:
                 deltah_list = self.df.loc[(self.df["signal"] == self.signal)]["deltah"].unique()
                 self.deltah = simpledialog.askfloat("Height", "Enter height delta: ")
+                if self.deltah == 0:  # if it's zero set to int instead of float
+                    self.deltah = 0
                 if self.deltah not in deltah_list:
                     messagebox.showinfo("Info",
                                         f"deltah = {self.deltah} doesn't exist for signal = {self.signal}, try again.")
@@ -116,71 +120,80 @@ class DataPlot:
                                  & (self.df["deltah"] == self.deltah)
                                  & (self.df["cyc"] > 1)
                                  )]
-        df_filter = df_filter.copy()
+        # Make sure dataframe is not empty
+        if not df_filter.empty:
+            df_filter = df_filter.copy()
 
-        flow1_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["flow_avg"].mean()
-        flow2_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["flow_std"].mean()
-        cur1_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["cur_avg"].mean()
-        cur2_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["cur_std"].mean()
+            flow1_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["flow_avg"].mean()
+            flow2_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["flow_std"].mean()
+            cur1_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["cur_avg"].mean()
+            cur2_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)["cur_std"].mean()
 
-        df = flow1_df.merge(flow2_df).merge(cur1_df).merge(cur2_df)
+            df = flow1_df.merge(flow2_df).merge(cur1_df).merge(cur2_df)
 
-        Path(f"{figure_folder}/flow").mkdir(parents=True, exist_ok=True)
-        Path(f"{figure_folder}/current").mkdir(parents=True, exist_ok=True)
-        appv_list = df_filter['appv'].unique()
-        pos_appv = [n for n in appv_list if n > 0]
-        neg_appv = [n for n in appv_list if n < 0]
+            Path(f"{figure_folder}/flow").mkdir(parents=True, exist_ok=True)
+            Path(f"{figure_folder}/current").mkdir(parents=True, exist_ok=True)
+            appv_list = df_filter['appv'].unique()
+            pos_appv = [n for n in appv_list if n > 0]
+            neg_appv = [n for n in appv_list if n < 0]
 
-        # Loop through all four variables of interest
-        y_var = {'flow_avg': 'flow_std', 'cur_avg': 'cur_std'}
-        fig1, ax1 = plt.subplots(figsize=FIG_SIZE, layout="tight")
-        fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
+            # Loop through all four variables of interest
+            y_var = {'flow_avg': 'flow_std', 'cur_avg': 'cur_std'}
+            fig1, ax1 = plt.subplots(figsize=FIG_SIZE, layout="tight")
+            fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
 
-        pos_pulse = df.loc[(df["appv"] == pos_appv[0])]
-        neg_pulse = df.loc[(df["appv"] == neg_appv[0])]
+            pos_pulse = df.loc[(df["appv"] == pos_appv[0])]
+            neg_pulse = df.loc[(df["appv"] == neg_appv[0])]
 
-        for y, std in y_var.items():
-            if "flow" in y:
-                ax1.plot(y, '.-', data=pos_pulse, label=f"+{pos_appv[0]} V", markersize=2, linewidth=1, color='#1f77b4')
-                ax1.plot(y, '.-', data=neg_pulse, label=f"{neg_appv[0]} V", markersize=2, linewidth=1, color='#ff7f0e')
+            for y, std in y_var.items():
+                if "flow" in y:
+                    ax1.plot(y, '.-', data=pos_pulse, label=f"+{pos_appv[0]} V", markersize=2, linewidth=1,
+                             color='#1f77b4')
+                    ax1.plot(y, '.-', data=neg_pulse, label=f"{neg_appv[0]} V", markersize=2, linewidth=1,
+                             color='#ff7f0e')
 
-                ax1.errorbar(pos_pulse.index, pos_pulse[y], fmt='.', yerr=pos_pulse[std], capsize=2, markersize=2,
-                             linewidth=1, color='#1f77b4', alpha=0.3)
-                ax1.errorbar(neg_pulse.index, neg_pulse[y], fmt='.', yerr=neg_pulse[std], capsize=2, markersize=2,
-                             linewidth=1, color='#ff7f0e', alpha=0.3)
-                plt.ylabel(r"Avg Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
-            elif "cur" in y:
-                ax2.plot(y, '.-', data=pos_pulse, label=f"{pos_appv[0]} V", markersize=2, linewidth=1, color='#1f77b4')
-                ax2.plot(y, '.-', data=neg_pulse, label=f"{neg_appv[0]} V", markersize=2, linewidth=1, color='#ff7f0e')
+                    ax1.errorbar(pos_pulse.index, pos_pulse[y], fmt='.', yerr=pos_pulse[std], capsize=2, markersize=2,
+                                 linewidth=1, color='#1f77b4', alpha=0.3)
+                    ax1.errorbar(neg_pulse.index, neg_pulse[y], fmt='.', yerr=neg_pulse[std], capsize=2, markersize=2,
+                                 linewidth=1, color='#ff7f0e', alpha=0.3)
+                    plt.ylabel(r"Avg Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
+                elif "cur" in y:
+                    ax2.plot(y, '.-', data=pos_pulse, label=f"{pos_appv[0]} V", markersize=2, linewidth=1,
+                             color='#1f77b4')
+                    ax2.plot(y, '.-', data=neg_pulse, label=f"{neg_appv[0]} V", markersize=2, linewidth=1,
+                             color='#ff7f0e')
 
-                ax2.errorbar(pos_pulse.index, pos_pulse[y], fmt='.', yerr=pos_pulse[std], capsize=2, markersize=2,
-                             linewidth=1, color='#1f77b4', alpha=0.3)
-                ax2.errorbar(neg_pulse.index, neg_pulse[y], fmt='.', yerr=neg_pulse[std], capsize=2, markersize=2,
-                             linewidth=1, color='#ff7f0e', alpha=0.3)
-                plt.ylabel(r"Avg Current [A/$m^{2}$]", fontsize=FONT_SIZE)
+                    ax2.errorbar(pos_pulse.index, pos_pulse[y], fmt='.', yerr=pos_pulse[std], capsize=2, markersize=2,
+                                 linewidth=1, color='#1f77b4', alpha=0.3)
+                    ax2.errorbar(neg_pulse.index, neg_pulse[y], fmt='.', yerr=neg_pulse[std], capsize=2, markersize=2,
+                                 linewidth=1, color='#ff7f0e', alpha=0.3)
+                    plt.ylabel(r"Avg Current [A/$m^{2}$]", fontsize=FONT_SIZE)
 
-        for ax in (ax1, ax2):
-            ax.legend(loc="upper right", fontsize=FONT_SIZE, labelspacing=0.2)
-            ax.set_title('\n'.join(wrap(self.title_text, 50)), loc='left', fontsize=FONT_SIZE)
-            ax.set_xlabel("Time [s]", fontsize=FONT_SIZE)
+            for ax in (ax1, ax2):
+                ax.legend(loc="upper right", fontsize=FONT_SIZE, labelspacing=0.2)
+                ax.set_title('\n'.join(wrap(self.title_text, 50)), loc='left', fontsize=FONT_SIZE)
+                ax.set_xlabel("Time [s]", fontsize=FONT_SIZE)
 
-            # Auto-scale y-axis
-            # Find max value to be used as y-axis limits (+10% margin), force symmetrical axis
-            ymax = max([abs(n) for n in ax.get_ylim()])
-            ax.set_ylim(ymax * -1, ymax)
-            ax.grid(visible=True)
+                # Auto-scale y-axis
+                # Find max value to be used as y-axis limits (+10% margin), force symmetrical axis
+                ymax = max([abs(n) for n in ax.get_ylim()])
+                ax.set_ylim(ymax * -1, ymax)
+                ax.grid(visible=True)
 
-        fig1.savefig(f"{figure_folder}/flow/{self.title_text}_avg_{y}_sig={self.signal}_deltah={self.deltah}.png",
-                     transparent=True)
-        fig2.savefig(f"{figure_folder}/current/{self.title_text}_avg_{y}_sig={self.signal}_deltah={self.deltah}.png",
-                     transparent=True)
+            fig1.savefig(f"{figure_folder}/flow/{self.exp_date}_avg_{y}_sig={self.signal}_deltah={self.deltah}.png",
+                         transparent=True)
+            fig2.savefig(
+                f"{figure_folder}/current/{self.exp_date}_avg_{y}_sig={self.signal}_deltah={self.deltah}.png",
+                transparent=True)
 
-        # plt.show()
-        plt.close()
+            # plt.show()
+            plt.close()
 
-        # write to temp file for troubleshooting
-        Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
-        df.to_excel(f"{figure_folder}/temp/cycle_average_temp.xlsx")
+            # write to temp file for troubleshooting
+            Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
+            df.to_excel(f"{figure_folder}/temp/cycle_average_temp.xlsx")
+        else:
+            print("Dataframe is empty, check data source")
 
     def snapshot_plot(self, figure_folder="figures"):
         # Add calculated column
@@ -199,7 +212,6 @@ class DataPlot:
         appv_abs = [n for n in df['appv'].unique() if n != 0]
         pos_appv = [appv for appv in appv_abs if appv > 0]
         neg_appv = [appv for appv in appv_abs if appv < 0]
-
 
         # group data by voltage, assign NaN values to avoid connecting line between cycles
         zero_v = df.copy()
@@ -247,11 +259,11 @@ class DataPlot:
 
             if "flow" in y:
                 fig.savefig(
-                    f"{figure_folder}/flow/{self.title_text}_snapshot_{y}_sig={self.signal}_deltah={self.deltah}.png",
+                    f"{figure_folder}/flow/{self.exp_date}_snapshot_{y}_sig={self.signal}_deltah={self.deltah}.png",
                     transparent=True)
             elif "cur" in y:
                 fig.savefig(
-                    f"{figure_folder}/current/{self.title_text}_snapshot_{y}_sig={self.signal}_deltah={self.deltah}.png",
+                    f"{figure_folder}/current/{self.exp_date}_snapshot_{y}_sig={self.signal}_deltah={self.deltah}.png",
                     transparent=True)
             # plt.show()
             plt.close()
@@ -325,10 +337,10 @@ class DataPlot:
 
         Path(f"{figure_folder}/cycle average").mkdir(parents=True, exist_ok=True)
 
-        fig1.savefig(f"{figure_folder}/cycle average/flowcell_flow_avg_{self.title_text}"
+        fig1.savefig(f"{figure_folder}/cycle average/flowcell_flow_avg_{self.exp_date}"
                      f"_sig{self.signal}_h{self.deltah}.png",
                      transparent=True)
-        fig2.savefig(f"{figure_folder}/cycle average/flowcell_cur_avg_{self.title_text}"
+        fig2.savefig(f"{figure_folder}/cycle average/flowcell_cur_avg_{self.exp_date}"
                      f"_sig{self.signal}_h{self.deltah}.png",
                      transparent=True)
 
@@ -362,8 +374,9 @@ class DataPlot:
         # neg_v = df.copy()
         # neg_v[neg_v["appv"] != -appv_abs] = np.nan
 
-        # Variables of interest
+        # Variables of interest, ignoring averages and std
         col_names = [name for name in df.columns if ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
+        col_names = [name for name in col_names if ('avg' not in name) and ('std' not in name) and ('ci' not in name)]
 
         fig1, ax1 = plt.subplots(figsize=FIG_SIZE, layout="tight")
         fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
@@ -400,8 +413,9 @@ class DataPlot:
             ymax = max([abs(n) for n in ax.get_ylim()])
             ax.set_ylim(ymax * -1, ymax)
 
-        fig1.savefig(f"{figure_folder}/flowcell_flow_snapshot_{self.title_text}.png", transparent=True)
-        fig2.savefig(f"{figure_folder}/flowcell_cur_snapshot_{self.title_text}.png", transparent=True)
+        Path(f"{figure_folder}/snapshot").mkdir(parents=True, exist_ok=True)
+        fig1.savefig(f"{figure_folder}/snapshot/flowcell_flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
+        fig2.savefig(f"{figure_folder}/snapshot/flowcell_cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
 
         # plt.show()
         plt.close()
@@ -449,5 +463,6 @@ class DataPlot:
         ax2.legend()
 
         Path(f"{figure_folder}/water column").mkdir(parents=True, exist_ok=True)
-        fig.savefig(f"{figure_folder}/water column/flow_vs_deltah_{self.title_text}_sig{self.signal}_h{self.deltah}.png",
-                    transparent=True)
+        fig.savefig(
+            f"{figure_folder}/water column/flow_vs_deltah_{self.exp_date}_sig{self.signal}.png",
+            transparent=True)

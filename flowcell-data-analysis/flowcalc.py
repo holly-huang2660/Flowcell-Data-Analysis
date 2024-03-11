@@ -307,45 +307,47 @@ class FlowCalculator:
                             & (flow_df["signal"] == signal)
                             & (flow_df["flow cell"] == flowcell)
                     )]
-                    # list voltages applied
-                    # If symmetrical record only the magnitude appv
-                    # else record in the format of 'pos v/neg v'
-                    appv = [appv for appv in list(new_df['appv'].unique()) if appv != 0]
-                    if sum(appv) == 0:
-                        appv = abs(appv[0])
-                    else:
-                        appv = '/'.join([str(n) for n in appv])
-
-                    # calculate duty cycle as % of time NEGATIVE voltage is applied, ignoring the first cycle
-                    df = self.raw_data.copy()
-                    df = df.loc[((df["signal"] == signal) & (df["deltah"] == delta_h) & (df["cyc"] > 1))]
-                    duty_cycle = df.loc[(df['appv'] < 0)]['appv'].count() / df.loc[(df['appv'] != 0)]['appv'].count()
-
-                    # Because the data is in 1 sec intervals
-                    # Integral of the variable over time is equivalent to the mean
-                    # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
-
-                    pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
-                    pulse_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
-                    pulse_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
-
-                    eo_flow_pos = pulse_flow_pos - pressure_flow
-                    eo_flow_neg = pulse_flow_neg - pressure_flow
-
-                    pulse_energy_pos = new_df.loc[(new_df["appv"] > 0)]["power"].mean() / pulse_flow_pos
-                    pulse_energy_neg = new_df.loc[(new_df["appv"] < 0)]["power"].mean() / pulse_flow_neg
-
-                    pulse_cur_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
-                    pulse_cur_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
-                    cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
-                    cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
-
-                    # modify cycle calculation  for duty cycle != 50%
-                    cycle_flow = pulse_flow_pos * (1-duty_cycle) + pulse_flow_neg * duty_cycle
-                    cycle_energy = pulse_energy_pos * (1-duty_cycle) + pulse_energy_neg * duty_cycle
 
                     # Only write to dictionary if it's not empty
-                    if not np.isnan(pulse_flow_pos):
+                    if not new_df.empty:
+                        # list voltages applied
+                        # If symmetrical record only the magnitude appv
+                        # else record in the format of 'pos v/neg v'
+                        appv = [appv for appv in list(new_df['appv'].unique()) if appv != 0]
+                        if sum(appv) == 0:
+                            appv = abs(appv[0])
+                        else:
+                            appv = '/'.join([str(n) for n in appv])
+
+                        # calculate duty cycle as % of time NEGATIVE voltage is applied, ignoring the first cycle
+                        df = self.raw_data.copy()
+                        df = df.loc[((df["signal"] == signal) & (df["deltah"] == delta_h) & (df["cyc"] > 1))]
+                        duty_cycle = df.loc[(df['appv'] < 0)]['appv'].count() / df.loc[(df['appv'] != 0)]['appv'].count()
+
+                        # Because the data is in 1 sec intervals
+                        # Integral of the variable over time is equivalent to the mean
+                        # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
+
+                        pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
+                        pulse_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
+                        pulse_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
+
+                        eo_flow_pos = pulse_flow_pos - pressure_flow
+                        eo_flow_neg = pulse_flow_neg - pressure_flow
+
+                        pulse_energy_pos = new_df.loc[(new_df["appv"] > 0)]["power"].mean() / pulse_flow_pos
+                        pulse_energy_neg = new_df.loc[(new_df["appv"] < 0)]["power"].mean() / pulse_flow_neg
+
+                        pulse_cur_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
+                        pulse_cur_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
+                        cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
+                        cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
+
+                        # modify cycle calculation  for duty cycle != 50%
+                        cycle_flow = pulse_flow_pos * (1-duty_cycle) + pulse_flow_neg * duty_cycle
+                        cycle_energy = pulse_energy_pos * (1-duty_cycle) + pulse_energy_neg * duty_cycle
+
+                        # Write to dictionary
                         EO_flow_dict["signal"].append(signal)
                         EO_flow_dict["appv"].append(appv)
                         EO_flow_dict["deltah"].append(delta_h)
@@ -400,7 +402,7 @@ class FlowCalculator:
                }
 
         flow_df = self.pulse_cycle_calculator()
-        good_fit = 0.7  # cut-off for R^2 value
+        good_fit = 0.8  # cut-off for R^2 value
 
         # List of unique conditions to filter for
         signal_list = list(flow_df["signal"].unique())
@@ -439,7 +441,8 @@ class FlowCalculator:
                         reg = linear_model.LinearRegression(fit_intercept=False)
                         reg.fit(x, y1)
                         score1 = reg.score(x, y1)
-                        if score1 >= good_fit:
+                        # check the fit is good and slope is positive
+                        if (score1 >= good_fit) and (reg.coef_[0][0] > 0):
                             hydraulic_perm = reg.coef_[0][0]
                             hydraulic_perm = round(hydraulic_perm, 3)
 
@@ -456,7 +459,10 @@ class FlowCalculator:
                         score2 = reg.score(x, y2)
                         if (score2 >= good_fit) and (slope > 0):
                             pulse_pressure = -intercept / slope
-                            pulse_pressure = round(pulse_pressure, 3)
+                            if pulse_pressure < 10:  # check that it's a reasonable number (10 meter water column max)
+                                pulse_pressure = round(pulse_pressure, 3)
+                            else:
+                                pulse_pressure = 'n/a'
                         else:
                             pulse_pressure = 'n/a'
 
@@ -470,7 +476,10 @@ class FlowCalculator:
                         score3 = reg.score(x, y3)
                         if (score3 >= good_fit) and (slope > 0):
                             cycle_pressure = -intercept / slope
-                            cycle_pressure = round(cycle_pressure, 3)
+                            if cycle_pressure < 10:  # check that it's a reasonable number (10 meter water column max)
+                                cycle_pressure = round(cycle_pressure, 3)
+                            else:
+                                cycle_pressure = 'n/a'
                         else:
                             cycle_pressure = 'n/a'
 
