@@ -322,7 +322,8 @@ class FlowCalculator:
                         # calculate duty cycle as % of time NEGATIVE voltage is applied, ignoring the first cycle
                         df = self.raw_data.copy()
                         df = df.loc[((df["signal"] == signal) & (df["deltah"] == delta_h) & (df["cyc"] > 1))]
-                        duty_cycle = df.loc[(df['appv'] < 0)]['appv'].count() / df.loc[(df['appv'] != 0)]['appv'].count()
+                        duty_cycle = df.loc[(df['appv'] < 0)]['appv'].count() / df.loc[(df['appv'] != 0)][
+                            'appv'].count()
 
                         # Because the data is in 1 sec intervals
                         # Integral of the variable over time is equivalent to the mean
@@ -344,8 +345,8 @@ class FlowCalculator:
                         cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
 
                         # modify cycle calculation  for duty cycle != 50%
-                        cycle_flow = pulse_flow_pos * (1-duty_cycle) + pulse_flow_neg * duty_cycle
-                        cycle_energy = pulse_energy_pos * (1-duty_cycle) + pulse_energy_neg * duty_cycle
+                        cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
+                        cycle_energy = pulse_energy_pos * (1 - duty_cycle) + pulse_energy_neg * duty_cycle
 
                         # Write to dictionary
                         EO_flow_dict["signal"].append(signal)
@@ -502,8 +503,8 @@ class FlowCalculator:
         FOM = pd.DataFrame(FOM)
 
         # merge equivalent circuit fitting results
-        circuit = self.circuit_fitting()
-        FOM = FOM.merge(circuit)
+        # circuit = self.circuit_fitting()
+        # FOM = FOM.merge(circuit)
 
         return FOM
 
@@ -512,50 +513,80 @@ class FlowCalculator:
         raw_data = self.raw_data
         circuit_results = pd.DataFrame()
 
-        exp_df = raw_data.loc[((raw_data['signal'] != 0)
-                               & (raw_data['deltah'] == 0)
-                               & (raw_data['cyc'] > 1))]
-        exp_df = exp_df.copy()
+        # List of unique conditions to filter for
+        signal_list = list(raw_data['signal'].unique())
+        signal_list.pop(0)  # drop signal 0
+        delta_h_list = list(raw_data['deltah'].unique())
 
-        # construct relative time (seconds) column
-        exp_df["rel time"] = exp_df["time"] - exp_df["time"].iloc[0]
-        exp_df["rel time"] = exp_df["rel time"].dt.total_seconds()
+        for signal in signal_list:
+            for delta_h in delta_h_list:
+                exp_df = raw_data.loc[((raw_data['signal'] == signal)
+                                       & (raw_data['deltah'] == delta_h)
+                                       & (raw_data['cyc'] > 1))]
+                if not exp_df.empty:
+                    exp_df = exp_df.copy()
 
-        exp_voltage = exp_df['appv'].to_numpy()
-        exp_time = exp_df['rel time'].to_numpy()
-        xdata = pd.DataFrame({'time': exp_time, 'appv': exp_voltage})
+                    # construct relative time (seconds) column
+                    exp_df["rel time"] = exp_df["time"] - exp_df["time"].iloc[0]
+                    exp_df["rel time"] = exp_df["rel time"].dt.total_seconds()
 
-        # Convert specific current back to total current (A/m^2) for fitting by multiplying by cell area
-        exp_cur1 = np.multiply(exp_df['cur1'].to_numpy(), cell_area)
-        exp_cur2 = np.multiply(exp_df['cur2'].to_numpy(), cell_area)
+                    exp_voltage = exp_df['appv'].to_numpy()
+                    exp_time = exp_df['rel time'].to_numpy()
+                    xdata = pd.DataFrame({'time': exp_time, 'appv': exp_voltage})
 
-        # import circuit model class
-        circuit_model = CircuitModel(time=exp_time)
-        popt1, pcov1 = curve_fit(f=circuit_model.circuit_RC, xdata=xdata, ydata=exp_cur1, p0=[100, 1],
-                                 bounds=(0, [np.inf, np.inf]))
-        cell1_R, cell1_C = popt1[0], popt1[1]
-        popt2, pcov2 = curve_fit(f=circuit_model.circuit_RC, xdata=xdata, ydata=exp_cur2, p0=[100, 1],
-                                 bounds=(0, [np.inf, np.inf]))
-        cell2_R, cell2_C = popt2[0], popt2[1]
+                    # Convert specific current back to total current (A/m^2) for fitting by multiplying by cell area
+                    exp_cur1 = np.multiply(exp_df['cur1'].to_numpy(), cell_area)
+                    exp_cur2 = np.multiply(exp_df['cur2'].to_numpy(), cell_area)
 
-        # evaluate goodness of fit
-        sim1_cur = circuit_model.circuit_RC(xdata=xdata, resistance=cell1_R, capacitance=cell1_C)
-        sim2_cur = circuit_model.circuit_RC(xdata=xdata, resistance=cell2_R, capacitance=cell2_C)
+                    # import circuit model class RC
+                    # circuit_model = CircuitModel(time=exp_time)
+                    # popt1, pcov1 = curve_fit(f=circuit_model.circuit_RC, xdata=xdata, ydata=exp_cur1, p0=[100, 1],
+                    #                          bounds=(0, [np.inf, np.inf]))
+                    # cell1_R, cell1_C = popt1[0], popt1[1]
+                    # popt2, pcov2 = curve_fit(f=circuit_model.circuit_RC, xdata=xdata, ydata=exp_cur2, p0=[100, 1],
+                    #                          bounds=(0, [np.inf, np.inf]))
+                    # cell2_R, cell2_C = popt2[0], popt2[1]
 
-        sim1_fit = self.r_squared_calc(exp_cur1, sim1_cur)
-        sim2_fit = self.r_squared_calc(exp_cur2, sim2_cur)
+                    # import circuit model class R(RC)
+                    circuit_model = CircuitModel(time=exp_time)
 
-        if sim1_fit < 0.7:
-            cell1_R, cell1_C = 'n/a', 'n/a'
+                    # add in try except block to catch runtime error for curve_fit
+                    try:
+                        popt1, pcov1 = curve_fit(f=circuit_model.circuit_RRC, xdata=xdata, ydata=exp_cur1,
+                                                 p0=[100, 100, 1],
+                                                 bounds=(0, [np.inf, np.inf, np.inf]))
 
-        if sim2_fit < 0.7:
-            cell2_R, cell2_C = 'n/a', 'n/a'
+                        popt2, pcov2 = curve_fit(f=circuit_model.circuit_RRC, xdata=xdata, ydata=exp_cur2,
+                                                 p0=[100, 100, 1],
+                                                 bounds=(0, [np.inf, np.inf, np.inf]))
+                    except RuntimeError:
+                        print("Optimal parameters not found, set values to n/a")
+                        cell1_R1, cell1_R2, cell1_C = 'n/a', 'n/a', 'n/a'
+                        cell2_R1, cell2_R2, cell2_C = 'n/a', 'n/a', 'n/a'
+                    else:
+                        cell1_R1, cell1_R2, cell1_C = popt1[0], popt1[1], popt1[2]
+                        cell2_R1, cell2_R2, cell2_C = popt2[0], popt2[1], popt2[2]
 
-        results = pd.DataFrame({'flow cell': self.flowcell_list,
-                                'Resistance (Ohms)': [cell1_R, cell2_R],
-                                'Capacitance (F)': [cell1_C, cell2_C],
-                                })
-        circuit_results = pd.concat([circuit_results, results])
+                        # evaluate goodness of fit
+                        sim1_cur = circuit_model.circuit_RRC(xdata=xdata, R1=cell1_R1, R2=cell1_R2, C=cell1_C)
+                        sim2_cur = circuit_model.circuit_RRC(xdata=xdata, R1=cell2_R1, R2=cell2_R2, C=cell2_C)
+
+                        sim1_fit = self.r_squared_calc(exp_cur1, sim1_cur)
+                        sim2_fit = self.r_squared_calc(exp_cur2, sim2_cur)
+
+                        if sim1_fit < 0.7:
+                            cell1_R1, cell1_R2, cell1_C = 'n/a', 'n/a', 'n/a'
+                        if sim2_fit < 0.7:
+                            cell2_R1, cell1_R2, cell2_C = 'n/a', 'n/a', 'n/a'
+
+                    results = pd.DataFrame({'flow cell': self.flowcell_list,
+                                            'signal': [signal, signal],
+                                            'deltah': [delta_h, delta_h],
+                                            'R1 (Ohms)': [cell1_R1, cell2_R1],
+                                            'R2 (Ohms)': [cell1_R2, cell2_R2],
+                                            'Capacitance (F)': [cell1_C, cell2_C],
+                                            })
+                    circuit_results = pd.concat([circuit_results, results], ignore_index=True)
 
         return circuit_results
 

@@ -124,12 +124,11 @@ class UserInterface:
 
         # Calculates and save figures to figure folder
         data_plot = DataPlot(file_path=self.file_path)
-        data_plot.cycle_avg_plot(figure_folder=f"{self.output_folder}/figures")
-        data_plot.snapshot_plot(figure_folder=f"{self.output_folder}/figures")
+        # data_plot.cycle_avg_plot(figure_folder=f"{self.output_folder}/figures")
+        # data_plot.snapshot_plot(figure_folder=f"{self.output_folder}/figures")
         data_plot.snapshot_by_flowcell(figure_folder=f"{self.output_folder}/figures")
         data_plot.flow_vs_water_column(figure_folder=f"{self.output_folder}/figures")
         data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
-
 
         print(f"Plotting finished, figures are located in {self.output_folder}/figures")
         self.file_plot_check.config(text="✓")
@@ -170,12 +169,14 @@ class UserInterface:
         flow_list = []
         eo_list = []
         fom_list = []
+        # circuit_list = []
 
         for file in file_list:
             flow_calculator = FlowCalculator(file_path=file)
             mf = flow_calculator.mean_flow_calculator()
             eo = flow_calculator.pulse_cycle_calculator()
             fom = flow_calculator.FOM_calculator()
+            # circuit = flow_calculator.circuit_fitting()
 
             # remove flow cell designation from file name
             exp_name = file.split('/')[-1][:-3]
@@ -184,10 +185,12 @@ class UserInterface:
             mf.insert(0, "file", exp_name)
             eo.insert(0, "file", exp_name)
             fom.insert(0, "file", exp_name)
+            # circuit.insert(0, "file", exp_name)
 
             flow_list.append(mf)
             eo_list.append(eo)
             fom_list.append(fom)
+            # circuit_list.append(circuit)
 
             material_list['file'].append(exp_name)
             material_list['membrane'].append(flow_calculator.params['membrane'])
@@ -197,6 +200,7 @@ class UserInterface:
         flow_df = pd.concat(flow_list, ignore_index=True)
         eo_flow_df = pd.concat(eo_list, ignore_index=True)
         fom_df = pd.concat(fom_list, ignore_index=True)
+        # circuit_df = pd.concat(circuit_list, ignore_index=True)
         material_df = pd.DataFrame(material_list)
         material_df.drop_duplicates('file', ignore_index=True, inplace=True)
 
@@ -205,6 +209,7 @@ class UserInterface:
             fom_df.to_excel(writer, sheet_name="figures of merit", index=False)
             flow_df.to_excel(writer, sheet_name="flow and power summary", index=False)
             eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
+            # circuit_df.to_excel(writer, sheet_name="equivalent circuit", index=False)
 
     def boxplot_plot(self):
         """
@@ -297,9 +302,9 @@ class UserInterface:
                          graph_title=graph_title)
 
         # Plot for comparing equivalent circuit resistance
-        self.fom_boxplot(df=df, fom_list=['Resistance (Ohms)'],
-                         plot_name=f"{folder_name} eq circuit boxplot", y_label="Equivalent RC Circuit - Resistance",
-                         graph_title=graph_title)
+        # self.fom_boxplot(df=df, fom_list=['Resistance (Ohms)'],
+        #                  plot_name=f"{folder_name} eq circuit boxplot", y_label="Equivalent RC Circuit - Resistance",
+        #                  graph_title=graph_title)
 
         self.boxplot_check.config(text="✓")
         print(f"Boxplot completed, output can be located at {self.output_folder}/figures/boxplot")

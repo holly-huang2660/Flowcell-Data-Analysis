@@ -335,12 +335,12 @@ class DataPlot:
             ax.set_ylim(ymax * -1, ymax)
             ax.set_xlim(0, 120)
 
-        Path(f"{figure_folder}/cycle average").mkdir(parents=True, exist_ok=True)
+        Path(f"{figure_folder}/{self.exp_date}").mkdir(parents=True, exist_ok=True)
 
-        fig1.savefig(f"{figure_folder}/cycle average/flowcell_flow_avg_{self.exp_date}"
+        fig1.savefig(f"{figure_folder}/{self.exp_date}/flowcell_flow_avg_{self.exp_date}"
                      f"_sig{self.signal}_h{self.deltah}.png",
                      transparent=True)
-        fig2.savefig(f"{figure_folder}/cycle average/flowcell_cur_avg_{self.exp_date}"
+        fig2.savefig(f"{figure_folder}/{self.exp_date}/flowcell_cur_avg_{self.exp_date}"
                      f"_sig{self.signal}_h{self.deltah}.png",
                      transparent=True)
 
@@ -413,9 +413,9 @@ class DataPlot:
             ymax = max([abs(n) for n in ax.get_ylim()])
             ax.set_ylim(ymax * -1, ymax)
 
-        Path(f"{figure_folder}/snapshot").mkdir(parents=True, exist_ok=True)
-        fig1.savefig(f"{figure_folder}/snapshot/flowcell_flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
-        fig2.savefig(f"{figure_folder}/snapshot/flowcell_cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
+        Path(f"{figure_folder}/{self.exp_date}").mkdir(parents=True, exist_ok=True)
+        fig1.savefig(f"{figure_folder}/{self.exp_date}/flowcell_flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
+        fig2.savefig(f"{figure_folder}/{self.exp_date}/flowcell_cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
 
         # plt.show()
         plt.close()
@@ -462,7 +462,7 @@ class DataPlot:
         ax2.set_xlabel('Water Column [cm]')
         ax2.legend()
 
-        Path(f"{figure_folder}/water column").mkdir(parents=True, exist_ok=True)
+        Path(f"{figure_folder}/{self.exp_date}").mkdir(parents=True, exist_ok=True)
         fig.savefig(
-            f"{figure_folder}/water column/flow_vs_deltah_{self.exp_date}_sig{self.signal}.png",
+            f"{figure_folder}/{self.exp_date}/flow_vs_deltah_{self.exp_date}_sig{self.signal}.png",
             transparent=True)
