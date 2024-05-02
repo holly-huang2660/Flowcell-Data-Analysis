@@ -291,6 +291,7 @@ class FlowCalculator:
                         "pulse energy (+v)": [],
                         "pulse energy (-v)": [],
                         "cycle energy": [],
+                        "streaming current (v=0)": [],
                         "cycle current": [],
                         "cycle abs current": []
                         }
@@ -339,6 +340,7 @@ class FlowCalculator:
                         pulse_energy_pos = new_df.loc[(new_df["appv"] > 0)]["power"].mean() / pulse_flow_pos
                         pulse_energy_neg = new_df.loc[(new_df["appv"] < 0)]["power"].mean() / pulse_flow_neg
 
+                        streaming_current = new_df.loc[(new_df["appv"] == 0)]["current"].mean()
                         pulse_cur_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
                         pulse_cur_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
                         cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
@@ -363,6 +365,7 @@ class FlowCalculator:
                         EO_flow_dict["pulse energy (+v)"].append(round(pulse_energy_pos, 3))
                         EO_flow_dict["pulse energy (-v)"].append(round(pulse_energy_neg, 3))
                         EO_flow_dict["cycle energy"].append(round(cycle_energy, 3))
+                        EO_flow_dict["streaming current (v=0)"].append(streaming_current)
                         EO_flow_dict["cycle current"].append(round(cycle_mean_cur, 3))
                         EO_flow_dict["cycle abs current"].append(round(cycle_mean_cur_abs, 3))
 

@@ -11,7 +11,7 @@ import seaborn as sns
 FONT_SIZE = 10
 COLOR = "crest"
 FIG_SIZE = (6, 4)
-
+# TODO: refactor to move all user prompts (signal and height change, y-limits) over to UI class instead
 
 class DataPlot:
     def __init__(self, file_path):
@@ -45,10 +45,9 @@ class DataPlot:
         # self.df["cur1"] = self.df["cur1"] * -1
         # self.df["cur2"] = self.df["cur2"] * -1
 
-        # Initiate default values for plotting and ask if user wants to change
+        # Initiate default values for plotting
         self.signal = 1
         self.deltah = 0
-        self.prompt_user_input()
 
         # Get column names
         self.col_names = [name for name in self.df.columns if
@@ -70,29 +69,6 @@ class DataPlot:
         df.drop(df[df['signal'] == 0].index, inplace=True)
         df.drop_duplicates(subset=['appv', 'deltah', 'signal', 'cnt', 'cyc'], inplace=True)
         return df, pulse_df, file_name
-
-    def prompt_user_input(self):
-        signal_list = self.df["signal"].unique()
-
-        user_input = messagebox.askyesno("Plotting",
-                                         "Change the signal track (default=1) and height delta (default=0) for "
-                                         "plotting?")
-        if user_input:
-            self.signal = simpledialog.askinteger("Signal Track", "Enter signal track: ")
-            if self.signal not in signal_list:
-                messagebox.showinfo("Info", f"signal = {self.signal} doesn't exist, try again.")
-                self.signal = 1  # reset to default
-                self.prompt_user_input()
-            else:
-                deltah_list = self.df.loc[(self.df["signal"] == self.signal)]["deltah"].unique()
-                self.deltah = simpledialog.askfloat("Height", "Enter height delta: ")
-                if self.deltah == 0:  # if it's zero set to int instead of float
-                    self.deltah = 0
-                if self.deltah not in deltah_list:
-                    messagebox.showinfo("Info",
-                                        f"deltah = {self.deltah} doesn't exist for signal = {self.signal}, try again.")
-                    self.deltah = 0  # reset to default
-                    self.prompt_user_input()
 
     def flowcell_averages(self):
         # add average and standard deviation columns across all 4 flow cells to the dataframe
@@ -272,14 +248,12 @@ class DataPlot:
         Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
         df.to_excel(f"{figure_folder}/temp/all_cycle_snapshot_temp.xlsx")
 
-    def cycle_avg_by_flowcell(self, figure_folder="figures"):
+    def cycle_avg_by_flowcell(self, figure_folder="figures", auto_ylim=True, flow_ylim=10, cur_ylim=100):
         df_filter = self.df.loc[((self.df["signal"] == self.signal)
                                  & (self.df["deltah"] == self.deltah)
                                  & (self.df["cyc"] > 1)
                                  )]
         df_filter = df_filter.copy()
-
-        # col_names = [name for name in self.df.columns if ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
         col_names = self.col_names
 
         avg_list = []
@@ -329,50 +303,41 @@ class DataPlot:
             ax.set_xlabel("Time [s]", fontsize=FONT_SIZE)
             ax.set_title('\n'.join(wrap(self.title_text, 50)), loc='left', fontsize=FONT_SIZE)
             ax.grid(visible=True)
-
-            # Auto-scale y-axis
-            ymax = max([abs(n) for n in ax.get_ylim()])
-            ax.set_ylim(ymax * -1, ymax)
             ax.set_xlim(0, 120)
 
-        Path(f"{figure_folder}/{self.exp_date}").mkdir(parents=True, exist_ok=True)
+        if not auto_ylim:
+            ax1.set_ylim(flow_ylim*-1, flow_ylim)
+            ax2.set_ylim(cur_ylim*-1, cur_ylim)
+        else:
+            for ax in (ax1, ax2):
+                # Auto-scale y-axis
+                ymax = max([abs(n) for n in ax.get_ylim()])
+                ax.set_ylim(ymax * -1, ymax)
 
-        fig1.savefig(f"{figure_folder}/{self.exp_date}/flowcell_flow_avg_{self.exp_date}"
-                     f"_sig{self.signal}_h{self.deltah}.png",
-                     transparent=True)
-        fig2.savefig(f"{figure_folder}/{self.exp_date}/flowcell_cur_avg_{self.exp_date}"
-                     f"_sig{self.signal}_h{self.deltah}.png",
-                     transparent=True)
+        current_save = f"{figure_folder}/{self.exp_date}/current"
+        flow_save = f"{figure_folder}/{self.exp_date}/flow"
+
+        Path(current_save).mkdir(parents=True, exist_ok=True)
+        Path(flow_save).mkdir(parents=True, exist_ok=True)
 
         # plt.show()
+        fig1.savefig(f"{flow_save}/flow_avg_{self.exp_date}"
+                     f"_sig{self.signal}_h{self.deltah}.png",
+                     transparent=True)
+        fig2.savefig(f"{current_save}/cur_avg_{self.exp_date}"
+                     f"_sig{self.signal}_h{self.deltah}.png",
+                     transparent=True)
         plt.close()
 
         # write to temp file for troubleshooting
-        Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
-        df.to_excel(f"{figure_folder}/temp/cycle_average_by_flowcell_temp.xlsx")
+        # Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
+        # df.to_excel(f"{figure_folder}/temp/cycle_average_by_flowcell_temp.xlsx")
 
     def snapshot_by_flowcell(self, figure_folder="figures"):
         df_filter = self.df.loc[((self.df["signal"] == self.signal)
                                  & (self.df["deltah"] == self.deltah)
                                  )]
         df = df_filter.copy()
-
-        # construct relative time (min) column
-        # df['rel time'] = df.reset_index()['time'].diff().dt.total_seconds().fillna(0).cumsum().values
-        # df["rel time"] = df["rel time"] / 60
-        # df.drop(df[df["rel time"] > 25].index, inplace=True)
-
-        # # Check for magnitude of applied voltage
-        # appv_abs = [n for n in df['appv'].abs().unique() if n != 0]
-        # appv_abs = appv_abs[0]
-
-        # # group data by voltage, assign NaN values to avoid connecting line between cycles
-        # zero_v = df.copy()
-        # zero_v[zero_v["appv"] != 0] = np.nan
-        # pos_v = df.copy()
-        # pos_v[pos_v["appv"] != appv_abs] = np.nan
-        # neg_v = df.copy()
-        # neg_v[neg_v["appv"] != -appv_abs] = np.nan
 
         # Variables of interest, ignoring averages and std
         col_names = [name for name in df.columns if ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
@@ -413,9 +378,14 @@ class DataPlot:
             ymax = max([abs(n) for n in ax.get_ylim()])
             ax.set_ylim(ymax * -1, ymax)
 
-        Path(f"{figure_folder}/{self.exp_date}").mkdir(parents=True, exist_ok=True)
-        fig1.savefig(f"{figure_folder}/{self.exp_date}/flowcell_flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
-        fig2.savefig(f"{figure_folder}/{self.exp_date}/flowcell_cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
+        current_save = f"{figure_folder}/{self.exp_date}/current"
+        flow_save = f"{figure_folder}/{self.exp_date}/flow"
+
+        Path(current_save).mkdir(parents=True, exist_ok=True)
+        Path(flow_save).mkdir(parents=True, exist_ok=True)
+
+        fig1.savefig(f"{flow_save}/flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
+        fig2.savefig(f"{current_save}/cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
 
         # plt.show()
         plt.close()
@@ -462,7 +432,10 @@ class DataPlot:
         ax2.set_xlabel('Water Column [cm]')
         ax2.legend()
 
-        Path(f"{figure_folder}/{self.exp_date}").mkdir(parents=True, exist_ok=True)
+        save_folder = f"{figure_folder}/{self.exp_date}/water column"
+        Path(save_folder).mkdir(parents=True, exist_ok=True)
+
         fig.savefig(
-            f"{figure_folder}/{self.exp_date}/flow_vs_deltah_{self.exp_date}_sig{self.signal}.png",
+            f"{save_folder}/flow_vs_deltah_{self.exp_date}_sig{self.signal}.png",
             transparent=True)
+        plt.close()

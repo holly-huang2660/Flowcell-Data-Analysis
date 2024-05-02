@@ -54,37 +54,42 @@ class UserInterface:
         self.folder_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
         self.button_folder_boxplot = Button(text="Generate Boxplot", font=BUTTON_FONT, command=self.boxplot_plot)
         self.boxplot_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
+        self.button_folder_plot = Button(text="Folder Flow & Current Plots", font=BUTTON_FONT, command=self.folder_plot)
+        self.folderplot_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
 
         self.exit = Button(text="Exit", font=BUTTON_FONT, command=self.close_window)
 
         # Place elements
         self.label_output.grid(row=0, column=0, padx=5, pady=5, columnspan=2)
         self.button_output.grid(row=0, column=2, padx=5, pady=5, columnspan=2)
-        self.label_output_name.grid(row=1, column=0, columnspan=4)
+        self.label_output_name.grid(row=1, column=0, columnspan=5)
 
         self.linebreak1 = Label(text="======================================", font=FONT, bg=BG)
-        self.linebreak1.grid(row=2, column=0, columnspan=4)
+        self.linebreak1.grid(row=2, column=0, columnspan=5)
 
         self.label_file.grid(row=3, column=0, padx=5, pady=5, columnspan=2, sticky='w')
         self.button_file.grid(row=3, column=2, padx=5, pady=5, columnspan=2)
-        self.label_file_name.grid(row=4, column=0, columnspan=4)
+        self.label_file_name.grid(row=4, column=0, columnspan=5)
         self.button_file_summary.grid(row=5, column=0, pady=15)
         self.file_sum_check.grid(row=5, column=1, sticky="w")
         self.button_file_plot.grid(row=5, column=2, pady=15)
         self.file_plot_check.grid(row=5, column=3, sticky="w")
 
         self.linebreak2 = Label(text="======================================", font=FONT, bg=BG)
-        self.linebreak2.grid(row=6, column=0, columnspan=4)
+        self.linebreak2.grid(row=6, column=0, columnspan=5)
 
         self.label_folder.grid(row=7, column=0, padx=5, pady=5, columnspan=2)
         self.button_folder.grid(row=7, column=2, padx=5, pady=5, columnspan=2)
-        self.label_folder_name.grid(row=8, column=0, columnspan=4)
+        self.label_folder_name.grid(row=8, column=0, columnspan=5)
         self.button_folder_summary.grid(row=9, column=0, pady=15)
         self.folder_sum_check.grid(row=9, column=1, sticky="w")
         self.button_folder_boxplot.grid(row=9, column=2, pady=15)
         self.boxplot_check.grid(row=9, column=3, sticky="w")
 
-        self.exit.grid(row=10, column=0, columnspan=4, padx=10, pady=10)
+        self.button_folder_plot.grid(row=10, column=0, pady=15)
+        self.folderplot_check.grid(row=10, column=1, sticky="w")
+
+        self.exit.grid(row=11, column=0, columnspan=5, padx=10, pady=10)
 
         self.window.mainloop()
 
@@ -115,6 +120,9 @@ class UserInterface:
         exp_name = self.file_path[0].split("/")[-1][:-3]
         self.export_data_summary(file_list=self.file_path, summary_name=f"data summary {exp_name}.xlsx")
 
+        # Note: RRC circuit fitting takes long time, only uncomment if needed
+        # self.export_circuit_summary(file_list=self.file_path, summary_name=f"data summary {exp_name}.xlsx")
+
         print(f"File summary generated. File is located in {self.output_folder}/summary")
         self.file_sum_check.config(text="✓")
 
@@ -122,14 +130,17 @@ class UserInterface:
         # Make folder if it doesn't exist
         Path(f"{self.output_folder}/figures").mkdir(parents=True, exist_ok=True)
 
-        # Calculates and save figures to figure folder
+        signal, deltah, auto_ylim, flow_ymax, cur_ymax = self.prompt_user_input()
         data_plot = DataPlot(file_path=self.file_path)
-        # data_plot.cycle_avg_plot(figure_folder=f"{self.output_folder}/figures")
-        # data_plot.snapshot_plot(figure_folder=f"{self.output_folder}/figures")
+        # change attribute to user input
+        data_plot.signal = signal
+        data_plot.deltah = deltah
+
+        # Calculates and save figures to figure folder
         data_plot.snapshot_by_flowcell(figure_folder=f"{self.output_folder}/figures")
         data_plot.flow_vs_water_column(figure_folder=f"{self.output_folder}/figures")
-        data_plot.cycle_avg_by_flowcell(figure_folder=f"{self.output_folder}/figures")
-
+        data_plot.cycle_avg_by_flowcell(figure_folder=f'{self.output_folder}/figures',
+                                        auto_ylim=auto_ylim, flow_ylim=flow_ymax, cur_ylim=cur_ymax)
         print(f"Plotting finished, figures are located in {self.output_folder}/figures")
         self.file_plot_check.config(text="✓")
 
@@ -148,6 +159,34 @@ class UserInterface:
                                  if ("." not in f and os.path.isfile(f"{self.folder_path}/{f}"))]
 
         self.label_folder_name.config(text='\n'.join(wrap(self.folder_path, 60)))
+
+    def folder_plot(self):
+        # Make folder if it doesn't exist
+        Path(f"{self.output_folder}/figures").mkdir(parents=True, exist_ok=True)
+
+        # remove flow cell designation
+        exp_names = [f[:-3] for f in self.folder_file_list]
+        exp_names = list(set(exp_names))  # find unique
+
+        signal, deltah, auto_ylim, flow_ymax, cur_ymax = self.prompt_user_input()
+
+        for exp in exp_names:
+            # find unique sets of experiments
+            file_path = [f for f in self.folder_file_list if exp in f]
+            data_plot = DataPlot(file_path=file_path)
+
+            # change attribute to user input
+            data_plot.signal = signal
+            data_plot.deltah = deltah
+
+            data_plot.snapshot_by_flowcell(figure_folder=f'{self.output_folder}/figures')
+            data_plot.flow_vs_water_column(figure_folder=f'{self.output_folder}/figures')
+            data_plot.cycle_avg_by_flowcell(figure_folder=f'{self.output_folder}/figures',
+                                            auto_ylim=auto_ylim, flow_ylim=flow_ymax, cur_ylim=cur_ymax)
+            plt.close()
+
+        print(f"Plotting finished, figures are located in {self.output_folder}/figures")
+        self.folderplot_check.config(text="✓")
 
     def folder_summary(self):
         # Make folder if it doesn't exist
@@ -210,6 +249,25 @@ class UserInterface:
             flow_df.to_excel(writer, sheet_name="flow and power summary", index=False)
             eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
             # circuit_df.to_excel(writer, sheet_name="equivalent circuit", index=False)
+
+    def export_circuit_summary(self, file_list, summary_name):
+        circuit_list = []
+
+        for file in file_list:
+            flow_calculator = FlowCalculator(file_path=file)
+            circuit = flow_calculator.circuit_fitting()
+
+            # remove flow cell designation from file name
+            exp_name = file.split('/')[-1][:-3]
+            print(file.split('/')[-1])
+
+            circuit.insert(0, "file", exp_name)
+            circuit_list.append(circuit)
+
+        circuit_df = pd.concat(circuit_list, ignore_index=True)
+
+        with pd.ExcelWriter(f"{self.output_folder}/summary/{summary_name} equivalent circuit") as writer:
+            circuit_df.to_excel(writer, sheet_name="equivalent circuit", index=False)
 
     def boxplot_plot(self):
         """
@@ -342,3 +400,31 @@ class UserInterface:
                     transparent=True)
 
         plt.close()
+
+    def prompt_user_input(self):
+        # Ask user if they want to change the signal track and delta height
+        user_input = messagebox.askyesno("Plotting",
+                                         "Change the signal track (default=1) and height delta (default=0) for "
+                                         "plotting?")
+        if user_input:
+            signal = simpledialog.askinteger("Signal Track", "Enter signal track: ")
+            deltah = simpledialog.askfloat("Height", "Enter height delta: ")
+            if deltah == 0:  # if it's zero set to int instead of float
+                deltah = 0
+        else:
+            signal = 1
+            deltah = 0
+
+        # Ask user if they want to manually set y-limits for plotting
+        user_input = messagebox.askyesno("Plotting",
+                                         "Manually set y limits for plotting?")
+        if user_input:
+            auto_ylim = False
+            flow_ymax = simpledialog.askinteger("Y limit", "Y limit for flow (L/h/m^2):")
+            cur_ymax = simpledialog.askinteger("Y limit", "Y limit for current (A/m^2):")
+        else:
+            auto_ylim = True
+            flow_ymax = 10
+            cur_ymax = 100
+
+        return signal, deltah, auto_ylim, flow_ymax, cur_ymax
