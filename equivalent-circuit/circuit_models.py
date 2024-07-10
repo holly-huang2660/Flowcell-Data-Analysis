@@ -244,9 +244,9 @@ class CircuitModel:
 
     def plot_simulated_response(self, title="Equivalent circuit simulation"):
         # Plotting resultant current and applied voltage
-        fig, ax1 = plt.subplots(figsize=(5, 3), layout="constrained")
+        fig, ax1 = plt.subplots(figsize=(6, 4), layout="constrained")
         ax1.grid()
-        ax1.plot(self.time, self.appv, 'r--', label='Voltage')
+        ax1.plot('time', 'appv', 'r--', data=self.xdata, label='Voltage')
         ax1.set_xlabel('t [s]')
         ax1.set_ylabel('Voltage [V]')
 
@@ -263,7 +263,8 @@ class CircuitModel:
         ax2.plot(self.time, self.current, 'b--', label="Current")
         ax2.set_ylabel(r'Current [A]')
         # force symmetrical axis
-        ymax = max([abs(n) for n in ax2.get_ylim()])
+        # ymax = max([abs(n) for n in ax2.get_ylim()])
+        ymax = 0.2
         ax2.set_ylim(ymax * -1, ymax)
 
         lines, labels = ax1.get_legend_handles_labels()

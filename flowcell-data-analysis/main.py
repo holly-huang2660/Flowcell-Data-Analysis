@@ -12,5 +12,3 @@ import openpyxl
 # click exit when you are done
 
 ui = UserInterface()
-
-# Note: currently manually setting y-axis for flow avg plot, change value in dataplot.py

@@ -45,6 +45,8 @@ class UserInterface:
         self.button_file = Button(text="Browse file", font=BUTTON_FONT, command=self.get_file)
         self.button_file_summary = Button(text="Generate Data Summary", font=BUTTON_FONT, command=self.file_summary)
         self.file_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
+        self.button_circuit_summary = Button(text="Equivalent Circuit R(RC)", font=BUTTON_FONT, command=self.circuit_summary)
+        self.circuit_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
         self.button_file_plot = Button(text="Flow & Current Plots", font=BUTTON_FONT, command=self.file_plot)
         self.file_plot_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
 
@@ -74,22 +76,24 @@ class UserInterface:
         self.file_sum_check.grid(row=5, column=1, sticky="w")
         self.button_file_plot.grid(row=5, column=2, pady=15)
         self.file_plot_check.grid(row=5, column=3, sticky="w")
+        self.button_circuit_summary.grid(row=6, column=0, pady=15)
+        self.circuit_sum_check.grid(row=6, column=1, sticky="w")
 
         self.linebreak2 = Label(text="======================================", font=FONT, bg=BG)
-        self.linebreak2.grid(row=6, column=0, columnspan=5)
+        self.linebreak2.grid(row=7, column=0, columnspan=5)
 
-        self.label_folder.grid(row=7, column=0, padx=5, pady=5, columnspan=2)
-        self.button_folder.grid(row=7, column=2, padx=5, pady=5, columnspan=2)
-        self.label_folder_name.grid(row=8, column=0, columnspan=5)
-        self.button_folder_summary.grid(row=9, column=0, pady=15)
-        self.folder_sum_check.grid(row=9, column=1, sticky="w")
-        self.button_folder_boxplot.grid(row=9, column=2, pady=15)
-        self.boxplot_check.grid(row=9, column=3, sticky="w")
+        self.label_folder.grid(row=8, column=0, padx=5, pady=5, columnspan=2)
+        self.button_folder.grid(row=8, column=2, padx=5, pady=5, columnspan=2)
+        self.label_folder_name.grid(row=9, column=0, columnspan=5)
+        self.button_folder_summary.grid(row=10, column=0, pady=15)
+        self.folder_sum_check.grid(row=10, column=1, sticky="w")
+        self.button_folder_boxplot.grid(row=10, column=2, pady=15)
+        self.boxplot_check.grid(row=10, column=3, sticky="w")
 
-        self.button_folder_plot.grid(row=10, column=0, pady=15)
-        self.folderplot_check.grid(row=10, column=1, sticky="w")
+        self.button_folder_plot.grid(row=11, column=0, pady=15)
+        self.folderplot_check.grid(row=11, column=1, sticky="w")
 
-        self.exit.grid(row=11, column=0, columnspan=5, padx=10, pady=10)
+        self.exit.grid(row=12, column=0, columnspan=5, padx=10, pady=10)
 
         self.window.mainloop()
 
@@ -120,11 +124,18 @@ class UserInterface:
         exp_name = self.file_path[0].split("/")[-1][:-3]
         self.export_data_summary(file_list=self.file_path, summary_name=f"data summary {exp_name}.xlsx")
 
-        # Note: RRC circuit fitting takes long time, only uncomment if needed
-        # self.export_circuit_summary(file_list=self.file_path, summary_name=f"data summary {exp_name}.xlsx")
-
         print(f"File summary generated. File is located in {self.output_folder}/summary")
         self.file_sum_check.config(text="✓")
+
+    def circuit_summary(self):
+        # Make folder if it doesn't exist
+        Path(f"{self.output_folder}/summary").mkdir(parents=True, exist_ok=True)
+        # Get experiment name
+        exp_name = self.file_path[0].split("/")[-1][:-3]
+        self.export_circuit_summary(file_list=self.file_path, summary_name=f"circuit summary {exp_name}.xlsx")
+
+        print(f"Equivalent circuit fitted generated. File is located in {self.output_folder}/summary")
+        self.circuit_sum_check.config(text="✓")
 
     def file_plot(self):
         # Make folder if it doesn't exist
@@ -137,7 +148,8 @@ class UserInterface:
         data_plot.deltah = deltah
 
         # Calculates and save figures to figure folder
-        data_plot.snapshot_by_flowcell(figure_folder=f"{self.output_folder}/figures")
+        data_plot.snapshot_by_flowcell(figure_folder=f"{self.output_folder}/figures",
+                                       auto_ylim=auto_ylim, flow_ylim=flow_ymax, cur_ylim=cur_ymax)
         data_plot.flow_vs_water_column(figure_folder=f"{self.output_folder}/figures")
         data_plot.cycle_avg_by_flowcell(figure_folder=f'{self.output_folder}/figures',
                                         auto_ylim=auto_ylim, flow_ylim=flow_ymax, cur_ylim=cur_ymax)
@@ -179,7 +191,8 @@ class UserInterface:
             data_plot.signal = signal
             data_plot.deltah = deltah
 
-            data_plot.snapshot_by_flowcell(figure_folder=f'{self.output_folder}/figures')
+            data_plot.snapshot_by_flowcell(figure_folder=f'{self.output_folder}/figures',
+                                           auto_ylim=auto_ylim, flow_ylim=flow_ymax, cur_ylim=cur_ymax)
             data_plot.flow_vs_water_column(figure_folder=f'{self.output_folder}/figures')
             data_plot.cycle_avg_by_flowcell(figure_folder=f'{self.output_folder}/figures',
                                             auto_ylim=auto_ylim, flow_ylim=flow_ymax, cur_ylim=cur_ymax)
@@ -194,6 +207,7 @@ class UserInterface:
 
         folder_name = self.folder_path.split("/")[-1]
         self.export_data_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} folder summary.xlsx")
+        # self.export_circuit_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} circuit summary.xlsx")
 
         print(f"Folder summary generated. File is located in {self.output_folder}/summary")
         self.folder_sum_check.config(text="✓")
@@ -251,6 +265,13 @@ class UserInterface:
             # circuit_df.to_excel(writer, sheet_name="equivalent circuit", index=False)
 
     def export_circuit_summary(self, file_list, summary_name):
+        material_list = {
+            'file': [],
+            'membrane': [],
+            'electrode': [],
+            'iem': []
+        }
+
         circuit_list = []
 
         for file in file_list:
@@ -264,9 +285,18 @@ class UserInterface:
             circuit.insert(0, "file", exp_name)
             circuit_list.append(circuit)
 
-        circuit_df = pd.concat(circuit_list, ignore_index=True)
+            material_list['file'].append(exp_name)
+            material_list['membrane'].append(flow_calculator.params['membrane'])
+            material_list['electrode'].append(flow_calculator.params['electrode'])
+            material_list['iem'].append(flow_calculator.params['iem'])
 
-        with pd.ExcelWriter(f"{self.output_folder}/summary/{summary_name} equivalent circuit") as writer:
+        circuit_df = pd.concat(circuit_list, ignore_index=True)
+        circuit_df.sort_values(by=['signal'], inplace=True)
+        material_df = pd.DataFrame(material_list)
+        material_df.drop_duplicates('file', ignore_index=True, inplace=True)
+
+        with pd.ExcelWriter(f"{self.output_folder}/summary/{summary_name}") as writer:
+            material_df.to_excel(writer, sheet_name="experiment setup", index=False)
             circuit_df.to_excel(writer, sheet_name="equivalent circuit", index=False)
 
     def boxplot_plot(self):
@@ -288,8 +318,8 @@ class UserInterface:
         list1 = []
 
         keep_flowcell = messagebox.askyesno("Plotting",
-                                         "Analyze flow cell pairs individually?\n"
-                                         "Default is to combine all flow cell pairs as a single experiment")
+                                            "Analyze flow cell pairs individually?\n"
+                                            "Default is to combine all flow cell pairs as a single experiment")
 
         for file in self.folder_file_list:
             # Calculate figures of merit
@@ -407,10 +437,12 @@ class UserInterface:
                                          "Change the signal track (default=1) and height delta (default=0) for "
                                          "plotting?")
         if user_input:
-            signal = simpledialog.askinteger("Signal Track", "Enter signal track: ")
+            signal = simpledialog.askfloat("Signal Track", "Enter signal track: ")
             deltah = simpledialog.askfloat("Height", "Enter height delta: ")
             if deltah == 0:  # if it's zero set to int instead of float
                 deltah = 0
+            if signal == 1:
+                signal = 1
         else:
             signal = 1
             deltah = 0

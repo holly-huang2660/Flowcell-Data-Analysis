@@ -8,6 +8,9 @@ from circuit_models import CircuitModel
 
 default_resistor = 47
 default_diameter = 13 * 10 ** -3
+# default date time format: '%Y-%m-%d_%H:%M:%S' (e.g. 2024-01-01_09:00:00)
+# for older files (before 2023) use format: '%H:%M:%S'
+date_format = '%Y-%m-%d_%H:%M:%S'
 
 
 class FlowCalculator:
@@ -46,17 +49,18 @@ class FlowCalculator:
 
         self.raw_data = pd.read_csv(filepath_or_buffer=self.file_path,
                                     engine="python",
-                                    sep="  ",
+                                    sep="  | ",
                                     names=self.header,
                                     comment="#",
                                     on_bad_lines='skip'
                                     )
         # print(self.params)
 
-        # Format time column for plotting, drop rows that cannot be parsed
-        self.raw_data["time"] = pd.to_datetime(self.raw_data["time"].str.replace("_", " "),
-                                               errors='coerce')
-        self.raw_data.dropna(axis=0, subset=['time'], ignore_index=True, inplace=True)
+        # Format time column for plotting, drop rows that cannot be parsed and duplicate rows to keep to 1 point/sec
+        self.raw_data['time'] = pd.to_datetime(self.raw_data["time"], format=date_format,
+                                               errors="coerce")
+        self.raw_data.dropna(axis=0, subset=['time'], inplace=True, ignore_index=True)
+        self.raw_data.drop_duplicates(subset=['time'], inplace=True, ignore_index=True)
 
         # raw data preprocessing:
         # add cycle and phase count
@@ -109,11 +113,14 @@ class FlowCalculator:
 
                 # Parse materials from comment file
                 if line.startswith('Membrane'):
-                    params['membrane'] = line.split(":")[1].strip()
+                    text = [f.strip() for f in line.split(":")[1:]]
+                    params['membrane'] = ' '.join(text)
                 if line.startswith('Electrode'):
-                    params['electrode'] = line.split(":")[1].strip()
+                    text = [f.strip() for f in line.split(":")[1:]]
+                    params['electrode'] = ' '.join(text)
                 if line.startswith('Ion'):
-                    params['iem'] = line.split(":")[1].strip()
+                    text = [f.strip() for f in line.split(":")[1:]]
+                    params['iem'] = ' '.join(text)
 
                 # Parse actions from comment file
                 if line.startswith('Ignore-phase'):
@@ -293,7 +300,8 @@ class FlowCalculator:
                         "cycle energy": [],
                         "streaming current (v=0)": [],
                         "cycle current": [],
-                        "cycle abs current": []
+                        "cycle abs current": [],
+                        "cycle power": []
                         }
 
         # List of unique conditions to filter for
@@ -349,6 +357,7 @@ class FlowCalculator:
                         # modify cycle calculation  for duty cycle != 50%
                         cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
                         cycle_energy = pulse_energy_pos * (1 - duty_cycle) + pulse_energy_neg * duty_cycle
+                        cycle_pwr = np.trapz(new_df["power"])
 
                         # Write to dictionary
                         EO_flow_dict["signal"].append(signal)
@@ -368,6 +377,7 @@ class FlowCalculator:
                         EO_flow_dict["streaming current (v=0)"].append(streaming_current)
                         EO_flow_dict["cycle current"].append(round(cycle_mean_cur, 3))
                         EO_flow_dict["cycle abs current"].append(round(cycle_mean_cur_abs, 3))
+                        EO_flow_dict["cycle power"].append(round(cycle_pwr, 3))
 
         eo_flow_df = pd.DataFrame(EO_flow_dict)
         return eo_flow_df
@@ -380,7 +390,7 @@ class FlowCalculator:
         3) Hydrodynamic resistance/permeability (linear fit) (V=0)
         4) Pulse Pressure (height at Pulse flow=0)
         5) Cycle pressure (height at Cycle flow=0)
-        6) Pulse Energy consumption [Wh /L] (Pulse Flow , h=0)
+        6) Pulse Energy consumption [Wh/L] (Pulse Flow , h=0)
         7) Cycle Energy consumption [Wh/L] (Pulse Flow , h=0)
 
         h: water column height [m]
@@ -402,7 +412,11 @@ class FlowCalculator:
                'pulse energy consumption (Wh/L)': [],
                'cycle energy consumption (Wh/L)': [],
                'cycle current (A/m^2)': [],
-               'cycle abs current (A/m^2)': []
+               'cycle abs current (A/m^2)': [],
+               'cycle abs flow (L/h/m^2)': [],
+               'work in (W/m^2)': [],
+               'work out (W/m^2)': [],
+               'cycle efficiency': []
                }
 
         flow_df = self.pulse_cycle_calculator()
@@ -431,6 +445,11 @@ class FlowCalculator:
                     cycle_energy = new_df.loc[(new_df["deltah"] == 0)]["cycle energy"].mean()
                     cycle_cur = new_df.loc[(new_df["deltah"] == 0)]["cycle current"].mean()
                     cycle_abs_cur = new_df.loc[(new_df["deltah"] == 0)]["cycle abs current"].mean()
+                    cycle_abs_flow = abs(pulse_flow_pos) + abs(pulse_flow_neg)
+
+                    # efficiency calculation
+                    # work in: integral( I (A/m^2) * V) -> W/m^2
+                    work_in = new_df.loc[(new_df["deltah"] == 0)]["cycle power"].mean()
 
                     # Only write to dictionary if it's not empty
                     if not np.isnan(pulse_flow_neg):
@@ -440,52 +459,78 @@ class FlowCalculator:
 
                         # calculate hydraulic permeability by linear regression
                         length = len(x)
-                        x = x.reshape(length, 1)
-                        y1 = y1.reshape(length, 1)
-                        reg = linear_model.LinearRegression(fit_intercept=False)
-                        reg.fit(x, y1)
-                        score1 = reg.score(x, y1)
-                        # check the fit is good and slope is positive
-                        if (score1 >= good_fit) and (reg.coef_[0][0] > 0):
-                            hydraulic_perm = reg.coef_[0][0]
-                            hydraulic_perm = round(hydraulic_perm, 3)
+                        if length > 1:
+                            x = x.reshape(length, 1)
+                            y1 = y1.reshape(length, 1)
+                            reg = linear_model.LinearRegression(fit_intercept=False)
+                            reg.fit(x, y1)
+                            score1 = reg.score(x, y1)
 
-                        else:
-                            hydraulic_perm = 'n/a'
+                            # check the fit is good and slope is positive
+                            if (score1 >= good_fit) and (reg.coef_[0][0] > 0):
+                                hydraulic_perm = reg.coef_[0][0]
+                                hydraulic_perm = round(hydraulic_perm, 3)
 
-                        # pulse pressure (x-intercept of linear fit negative pulse flow vs deltah)
-                        y2 = new_df["pulse flow (-v)"].values
-                        y2 = y2.reshape(length, 1)
-                        reg = linear_model.LinearRegression()
-                        reg.fit(x, y2)
-                        slope = reg.coef_[0][0]
-                        intercept = reg.intercept_[0]
-                        score2 = reg.score(x, y2)
-                        if (score2 >= good_fit) and (slope > 0):
-                            pulse_pressure = -intercept / slope
-                            if pulse_pressure < 10:  # check that it's a reasonable number (10 meter water column max)
-                                pulse_pressure = round(pulse_pressure, 3)
+                            else:
+                                hydraulic_perm = 'n/a'
+
+                            # pulse pressure (x-intercept of linear fit negative pulse flow vs deltah)
+                            y2 = new_df["pulse flow (-v)"].values
+                            y2 = y2.reshape(length, 1)
+                            reg = linear_model.LinearRegression()
+                            reg.fit(x, y2)
+                            slope = reg.coef_[0][0]
+                            intercept = reg.intercept_[0]
+                            score2 = reg.score(x, y2)
+                            if (score2 >= good_fit) and (slope > 0):
+                                pulse_pressure = -intercept / slope
+                                if pulse_pressure < 0:
+                                    pulse_pressure = 0
+                                # check that it's a reasonable number (10 meter water column max)
+                                elif 0 < pulse_pressure < 10:
+                                    pulse_pressure = round(pulse_pressure, 3)
+                                else:
+                                    pulse_pressure = 'n/a'
                             else:
                                 pulse_pressure = 'n/a'
-                        else:
-                            pulse_pressure = 'n/a'
 
-                        # cycle pressure (x-intercept of linear fit cycle_flow vs deltah)
-                        y3 = new_df["cycle flow"].values
-                        y3 = y3.reshape(length, 1)
-                        reg = linear_model.LinearRegression()
-                        reg.fit(x, y3)
-                        intercept = reg.intercept_[0]
-                        slope = reg.coef_[0][0]
-                        score3 = reg.score(x, y3)
-                        if (score3 >= good_fit) and (slope > 0):
-                            cycle_pressure = -intercept / slope
-                            if cycle_pressure < 10:  # check that it's a reasonable number (10 meter water column max)
-                                cycle_pressure = round(cycle_pressure, 3)
+                            # cycle pressure (x-intercept of linear fit cycle_flow vs deltah)
+                            y3 = new_df["cycle flow"].values
+                            y3 = y3.reshape(length, 1)
+                            reg = linear_model.LinearRegression()
+                            reg.fit(x, y3)
+                            intercept = reg.intercept_[0]
+                            slope = reg.coef_[0][0]
+                            score3 = reg.score(x, y3)
+                            if (score3 >= good_fit) and (slope > 0):
+                                cycle_pressure = -intercept / slope
+
+                                if cycle_pressure < 0:
+                                    cycle_pressure = 0
+                                    work_out = 0
+                                    max_eff = 0
+                                # check that it's a reasonable number (10 meter water column max)
+                                elif 0 < cycle_pressure < 10:
+                                    # max efficiency calculation
+                                    # work out : J * P, J = J_max / 2 and P = P_max / 2
+                                    # work out : max cycle flow (m^3/m^2/s) * max cycle pressure (Pa) / 4 -> W/m^2
+                                    work_out = (abs(cycle_flow) / 1000 / 3600) * (cycle_pressure * 9.81 * 1000) / 4
+                                    max_eff = work_out / work_in
+                                    cycle_pressure = round(cycle_pressure, 3)
+                                else:
+                                    cycle_pressure = 'n/a'
+                                    work_out = 'n/a'
+                                    max_eff = 'n/a'
                             else:
                                 cycle_pressure = 'n/a'
+                                work_out = 'n/a'
+                                max_eff = 'n/a'
                         else:
+                            hydraulic_perm = 'n/a'
+                            pulse_pressure = 'n/a'
                             cycle_pressure = 'n/a'
+                            work_out = 'n/a'
+                            max_eff = 'n/a'
 
                         FOM['flow cell'].append(flowcell)
                         FOM['signal'].append(signal)
@@ -502,6 +547,10 @@ class FlowCalculator:
                         FOM['cycle pressure (m)'].append(cycle_pressure)
                         FOM['cycle current (A/m^2)'].append(round(cycle_cur, 3))
                         FOM['cycle abs current (A/m^2)'].append(round(cycle_abs_cur, 3))
+                        FOM['cycle abs flow (L/h/m^2)'].append(round(cycle_abs_flow, 3))
+                        FOM['work in (W/m^2)'].append(work_in)
+                        FOM['work out (W/m^2)'].append(work_out)
+                        FOM['cycle efficiency'].append(max_eff)
 
         FOM = pd.DataFrame(FOM)
 
@@ -519,78 +568,63 @@ class FlowCalculator:
         # List of unique conditions to filter for
         signal_list = list(raw_data['signal'].unique())
         signal_list.pop(0)  # drop signal 0
-        delta_h_list = list(raw_data['deltah'].unique())
 
         for signal in signal_list:
-            for delta_h in delta_h_list:
-                exp_df = raw_data.loc[((raw_data['signal'] == signal)
-                                       & (raw_data['deltah'] == delta_h)
-                                       & (raw_data['cyc'] > 1))]
-                if not exp_df.empty:
-                    exp_df = exp_df.copy()
+            exp_df = raw_data.loc[((raw_data['signal'] == signal) & (raw_data['deltah'] == 0))]
+            if not exp_df.empty:
+                exp_df = exp_df.copy()
 
-                    # construct relative time (seconds) column
-                    exp_df["rel time"] = exp_df["time"] - exp_df["time"].iloc[0]
-                    exp_df["rel time"] = exp_df["rel time"].dt.total_seconds()
+                # construct relative time (seconds) column
+                exp_df["rel time"] = exp_df["time"] - exp_df["time"].iloc[0]
+                exp_df["rel time"] = exp_df["rel time"].dt.total_seconds()
 
-                    exp_voltage = exp_df['appv'].to_numpy()
-                    exp_time = exp_df['rel time'].to_numpy()
-                    xdata = pd.DataFrame({'time': exp_time, 'appv': exp_voltage})
+                exp_voltage = exp_df['appv'].to_numpy()
+                exp_time = exp_df['rel time'].to_numpy()
+                xdata = pd.DataFrame({'time': exp_time, 'appv': exp_voltage})
 
-                    # Convert specific current back to total current (A/m^2) for fitting by multiplying by cell area
-                    exp_cur1 = np.multiply(exp_df['cur1'].to_numpy(), cell_area)
-                    exp_cur2 = np.multiply(exp_df['cur2'].to_numpy(), cell_area)
+                # Convert specific current back to total current (A/m^2) for fitting by multiplying by cell area
+                exp_cur1 = np.multiply(exp_df['cur1'].to_numpy(), cell_area)
+                exp_cur2 = np.multiply(exp_df['cur2'].to_numpy(), cell_area)
 
-                    # import circuit model class RC
-                    # circuit_model = CircuitModel(time=exp_time)
-                    # popt1, pcov1 = curve_fit(f=circuit_model.circuit_RC, xdata=xdata, ydata=exp_cur1, p0=[100, 1],
-                    #                          bounds=(0, [np.inf, np.inf]))
-                    # cell1_R, cell1_C = popt1[0], popt1[1]
-                    # popt2, pcov2 = curve_fit(f=circuit_model.circuit_RC, xdata=xdata, ydata=exp_cur2, p0=[100, 1],
-                    #                          bounds=(0, [np.inf, np.inf]))
-                    # cell2_R, cell2_C = popt2[0], popt2[1]
+                # import circuit model class R(RC)
+                circuit_model = CircuitModel(time=exp_time)
 
-                    # import circuit model class R(RC)
-                    circuit_model = CircuitModel(time=exp_time)
+                # add in try except block to catch runtime error for curve_fit
+                try:
+                    popt1, pcov1 = curve_fit(f=circuit_model.circuit_RRC, xdata=xdata, ydata=exp_cur1,
+                                             p0=[100, 100, 1],
+                                             bounds=(0, [np.inf, np.inf, np.inf]))
 
-                    # add in try except block to catch runtime error for curve_fit
-                    try:
-                        popt1, pcov1 = curve_fit(f=circuit_model.circuit_RRC, xdata=xdata, ydata=exp_cur1,
-                                                 p0=[100, 100, 1],
-                                                 bounds=(0, [np.inf, np.inf, np.inf]))
+                    popt2, pcov2 = curve_fit(f=circuit_model.circuit_RRC, xdata=xdata, ydata=exp_cur2,
+                                             p0=[100, 100, 1],
+                                             bounds=(0, [np.inf, np.inf, np.inf]))
+                except RuntimeError:
+                    print("Optimal parameters not found, set values to n/a")
+                    cell1_R1, cell1_R2, cell1_C = 'n/a', 'n/a', 'n/a'
+                    cell2_R1, cell2_R2, cell2_C = 'n/a', 'n/a', 'n/a'
+                else:
+                    cell1_R1, cell1_R2, cell1_C = popt1[0], popt1[1], popt1[2]
+                    cell2_R1, cell2_R2, cell2_C = popt2[0], popt2[1], popt2[2]
 
-                        popt2, pcov2 = curve_fit(f=circuit_model.circuit_RRC, xdata=xdata, ydata=exp_cur2,
-                                                 p0=[100, 100, 1],
-                                                 bounds=(0, [np.inf, np.inf, np.inf]))
-                    except RuntimeError:
-                        print("Optimal parameters not found, set values to n/a")
+                    # evaluate goodness of fit
+                    sim1_cur = circuit_model.circuit_RRC(xdata=xdata, R1=cell1_R1, R2=cell1_R2, C=cell1_C)
+                    sim2_cur = circuit_model.circuit_RRC(xdata=xdata, R1=cell2_R1, R2=cell2_R2, C=cell2_C)
+
+                    sim1_fit = self.r_squared_calc(exp_cur1, sim1_cur)
+                    sim2_fit = self.r_squared_calc(exp_cur2, sim2_cur)
+
+                    if sim1_fit < 0.7:
                         cell1_R1, cell1_R2, cell1_C = 'n/a', 'n/a', 'n/a'
-                        cell2_R1, cell2_R2, cell2_C = 'n/a', 'n/a', 'n/a'
-                    else:
-                        cell1_R1, cell1_R2, cell1_C = popt1[0], popt1[1], popt1[2]
-                        cell2_R1, cell2_R2, cell2_C = popt2[0], popt2[1], popt2[2]
+                    if sim2_fit < 0.7:
+                        cell2_R1, cell1_R2, cell2_C = 'n/a', 'n/a', 'n/a'
 
-                        # evaluate goodness of fit
-                        sim1_cur = circuit_model.circuit_RRC(xdata=xdata, R1=cell1_R1, R2=cell1_R2, C=cell1_C)
-                        sim2_cur = circuit_model.circuit_RRC(xdata=xdata, R1=cell2_R1, R2=cell2_R2, C=cell2_C)
-
-                        sim1_fit = self.r_squared_calc(exp_cur1, sim1_cur)
-                        sim2_fit = self.r_squared_calc(exp_cur2, sim2_cur)
-
-                        if sim1_fit < 0.7:
-                            cell1_R1, cell1_R2, cell1_C = 'n/a', 'n/a', 'n/a'
-                        if sim2_fit < 0.7:
-                            cell2_R1, cell1_R2, cell2_C = 'n/a', 'n/a', 'n/a'
-
-                    results = pd.DataFrame({'flow cell': self.flowcell_list,
-                                            'signal': [signal, signal],
-                                            'deltah': [delta_h, delta_h],
-                                            'R1 (Ohms)': [cell1_R1, cell2_R1],
-                                            'R2 (Ohms)': [cell1_R2, cell2_R2],
-                                            'Capacitance (F)': [cell1_C, cell2_C],
-                                            })
-                    circuit_results = pd.concat([circuit_results, results], ignore_index=True)
-
+                results = pd.DataFrame({'flow cell': self.flowcell_list,
+                                        'signal': [signal, signal],
+                                        'R1 (Ohms)': [cell1_R1, cell2_R1],
+                                        'R2 (Ohms)': [cell1_R2, cell2_R2],
+                                        'Capacitance (F)': [cell1_C, cell2_C],
+                                        })
+                circuit_results = pd.concat([circuit_results, results], ignore_index=True)
         return circuit_results
 
     def r_squared_calc(self, y, y_fit):

@@ -12,12 +12,12 @@ import matplotlib.pyplot as plt
 
 
 # =================== Simulated Circuit =====================================
-sim_time = np.arange(0, 360, 0.01)  # set up time sequence
+sim_time = np.arange(0, 600, 0.01)  # set up time sequence
 # Initiate the class
 sim_model = CircuitModel(time=sim_time)
 
 # # Create an arbitrary voltage input with scipy signal library
-sim_model.voltage_source(waveform='square', appv=0.5, duration=60, dc_bias=0, phase_shift=0)
+sim_model.voltage_source(waveform='square', appv=0.5, duration=60, dc_bias=0, phase_shift=np.pi)
 # # Alternatively, use Fourier approximation for square and sawtooth waveform
 # sim_model.voltage_source_fourier_approx(waveform="square", appv=0.5, duration=60, dc_bias=0, fourier_n=2)
 
@@ -28,25 +28,21 @@ sim_model.voltage_source(waveform='square', appv=0.5, duration=60, dc_bias=0, ph
 # sim_model.circuit_RC_diode(xdata=sim_model.xdata, R1=10, R2=10, C=1, threshold_voltage=0)
 # plot_title = 'Square Wave RC Diode Circuit (R1=10Ω, R2=10Ω, C=1F)'
 
-sim_model.circuit_RRC_diode(xdata=sim_model.xdata, R1=10, R2=100, R3=20, C=1, threshold_voltage=0)
-plot_title = 'Square Wave R(RC) Diode Circuit (R1=10Ω, R2=100Ω, R3=20Ω, C=1F)'
+R1, R2, Cap = 20, 1000, 1
+
+sim_model.circuit_RRC(xdata=sim_model.xdata, R1=R1, R2=R2, C=Cap)
+plot_title = f'Square Wave R(RC) (R1={R1}Ω, R2={R2}Ω, C={Cap}F)'
 
 # Plot results
 sim_model.plot_simulated_response(title=plot_title)
 
 
-# # Calculate columbic efficiency for one cycle
-# q_data = pd.DataFrame({'time': sim_time, 'appv': sim_model.appv, 'current': sim_model.current})
-# q_data = q_data.loc[(q_data['time'] >= 120) & (q_data['time'] <= 240)]
-# plt.plot('time', 'current', data=q_data)
-# plt.plot('time', 'appv', data=q_data)
-#
-# pos_current = np.where(q_data['current'] > 0, q_data['current'], 0)
-# neg_current = np.where(q_data['current'] < 0, q_data['current'], 0)
-# q_in = np.trapz(y=pos_current, x=q_data['time'])
-# q_out = np.trapz(y=neg_current, x=q_data['time'])
-# print(f"q_in = {round(q_in, 3)}, q_out = {round(q_out, 3)}, coulumbic efficiency = {round(abs(q_out / q_in), 3)}")
-# plt.show()
+# calculate average current
+q_data = pd.DataFrame({'time': sim_time, 'appv': sim_model.appv, 'current': sim_model.current})
+q_data = q_data.loc[(q_data['time'] >= 180)]
+cur_df = q_data.groupby(["appv"], as_index=False)["current"].mean()
+print(cur_df)
+
 
 
 # # =================== Data exploration: flow vs current relationships ===============================

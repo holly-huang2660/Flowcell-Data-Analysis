@@ -11,7 +11,9 @@ import seaborn as sns
 FONT_SIZE = 10
 COLOR = "crest"
 FIG_SIZE = (6, 4)
-# TODO: refactor to move all user prompts (signal and height change, y-limits) over to UI class instead
+SKIP_CELLS = []
+PULSE_LENGTH = 60  # default pulse length is 60 s, used for cycle avg plots
+
 
 class DataPlot:
     def __init__(self, file_path):
@@ -259,9 +261,9 @@ class DataPlot:
         avg_list = []
         std_list = []
         for col in col_names:
-            avg_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)[col].mean()
+            avg_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False, sort=False)[col].mean()
             avg_df.rename(columns={n: n + '_avg' for n in col_names}, inplace=True)
-            std_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False)[col].std()
+            std_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False, sort=False)[col].std()
             std_df.rename(columns={n: n + '_std' for n in col_names}, inplace=True)
             avg_list.append(avg_df)
             std_list.append(std_df)
@@ -272,6 +274,7 @@ class DataPlot:
             std = std.merge(std_list[n])
 
         df = avg.merge(std)
+        df.dropna(axis=0, how='any', inplace=True, ignore_index=True)
 
         fig1, ax1 = plt.subplots(figsize=FIG_SIZE, layout="tight")
         fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
@@ -281,7 +284,7 @@ class DataPlot:
             else:
                 label_text = y[-1]
 
-            if "flow" in y:
+            if "flow" in y and label_text not in SKIP_CELLS:
                 markers, caps, bars = ax1.errorbar(df.index, df[f'{y}_avg'], fmt='.-', yerr=df[f'{y}_std'],
                                                    label=label_text,
                                                    capsize=2, markersize=5, linewidth=1)
@@ -289,7 +292,7 @@ class DataPlot:
                 [cap.set_alpha(0.5) for cap in caps]
                 ax1.set_ylabel(r"Avg Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
 
-            elif "cur" in y:
+            elif "cur" in y and label_text not in SKIP_CELLS:
                 markers, caps, bars = ax2.errorbar(df.index, df[f'{y}_avg'], fmt='.-', yerr=df[f'{y}_std'],
                                                    label=label_text,
                                                    capsize=2, markersize=5, linewidth=1, alpha=1)
@@ -303,11 +306,11 @@ class DataPlot:
             ax.set_xlabel("Time [s]", fontsize=FONT_SIZE)
             ax.set_title('\n'.join(wrap(self.title_text, 50)), loc='left', fontsize=FONT_SIZE)
             ax.grid(visible=True)
-            ax.set_xlim(0, 120)
+            ax.set_xlim(0, PULSE_LENGTH * 2)
 
         if not auto_ylim:
-            ax1.set_ylim(flow_ylim*-1, flow_ylim)
-            ax2.set_ylim(cur_ylim*-1, cur_ylim)
+            ax1.set_ylim(flow_ylim * -1, flow_ylim)
+            ax2.set_ylim(cur_ylim * -1, cur_ylim)
         else:
             for ax in (ax1, ax2):
                 # Auto-scale y-axis
@@ -333,7 +336,7 @@ class DataPlot:
         # Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
         # df.to_excel(f"{figure_folder}/temp/cycle_average_by_flowcell_temp.xlsx")
 
-    def snapshot_by_flowcell(self, figure_folder="figures"):
+    def snapshot_by_flowcell(self, figure_folder="figures", auto_ylim=True, flow_ylim=10, cur_ylim=100):
         df_filter = self.df.loc[((self.df["signal"] == self.signal)
                                  & (self.df["deltah"] == self.deltah)
                                  )]
@@ -351,7 +354,7 @@ class DataPlot:
             else:
                 label_text = y[-1]
 
-            if "flow" in y:
+            if "flow" in y and label_text not in SKIP_CELLS:
                 ax1.plot(y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
                 # ax1.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
@@ -359,7 +362,7 @@ class DataPlot:
 
                 ax1.set_ylabel(r"Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
 
-            elif "cur" in y:
+            elif "cur" in y and label_text not in SKIP_CELLS:
                 ax2.plot(y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
                 # ax2.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
@@ -374,9 +377,14 @@ class DataPlot:
             ax.set_title('\n'.join(wrap(self.title_text, 50)), loc='left', fontsize=FONT_SIZE)
             ax.grid(visible=True)
 
-            # Auto-scale y-axis
-            ymax = max([abs(n) for n in ax.get_ylim()])
-            ax.set_ylim(ymax * -1, ymax)
+        if not auto_ylim:
+            ax1.set_ylim(flow_ylim * -1, flow_ylim)
+            ax2.set_ylim(cur_ylim * -1, cur_ylim)
+        else:
+            for ax in (ax1, ax2):
+                # Auto-scale y-axis
+                ymax = max([abs(n) for n in ax.get_ylim()])
+                ax.set_ylim(ymax * -1, ymax)
 
         current_save = f"{figure_folder}/{self.exp_date}/current"
         flow_save = f"{figure_folder}/{self.exp_date}/flow"
@@ -385,7 +393,8 @@ class DataPlot:
         Path(flow_save).mkdir(parents=True, exist_ok=True)
 
         fig1.savefig(f"{flow_save}/flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
-        fig2.savefig(f"{current_save}/cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
+        fig2.savefig(f"{current_save}/cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png",
+                     transparent=True)
 
         # plt.show()
         plt.close()
@@ -401,7 +410,7 @@ class DataPlot:
         # format marker differently for system 1 vs 2
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'POWY':
+            if cell in 'POWY' and cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='cycle flow',
                             line_kws={'linestyle': '--'}, marker='o', x_ci=None, ci=None, label=cell, ax=ax1)
         for cell in list(df['flow cell'].unique()):
@@ -418,12 +427,12 @@ class DataPlot:
 
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'POWY':
+            if cell in 'POWY' and cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
                             line_kws={'linestyle': '--'}, marker='o', x_ci=None, ci=None, label=cell, ax=ax2)
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'GBRK':
+            if cell in 'GBRK' and cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
                             line_kws={'linestyle': '--'}, marker='^', x_ci=None, ci=None, label=cell, ax=ax2)
 

@@ -4,6 +4,7 @@ flowcell-data-analysis/canonical samples/
 flowcell-data-analysis/figures/
 flowcell-data-analysis/output/
 flowcell-data-analysis/raw data/
+flowcell-data-analysis/data comparison/
 equivalent-circuit/_archive
 equivalent-circuit/figures
 circuit fitting results.csv
