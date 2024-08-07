@@ -70,6 +70,10 @@ class FlowCalculator:
         # add calculated columns
         self.calc_columns()
 
+        # initiate empty data frames
+        self.flow_df = pd.DataFrame()
+        self.eo_flow_df = pd.DataFrame()
+
     def parse_comments(self):
         params = {'period': None,
                   'diameter': None,
@@ -276,12 +280,16 @@ class FlowCalculator:
         flow_df = pd.concat([flow1_df, flow2_df])
         flow_df = flow_df.merge(pwr_df).merge(cur_df)
 
+        self.flow_df = flow_df
+
         return flow_df
 
     def pulse_cycle_calculator(self):
         # Takes flow_df from mean_flow_calculator and performs the following calculations:
         # Returns a new dataframe
-        flow_df = self.mean_flow_calculator()
+        if self.flow_df.empty:
+            self.mean_flow_calculator()
+        flow_df = self.flow_df
 
         # Set up empty dictionary for the calculated results
         EO_flow_dict = {"flow cell": [],
@@ -293,14 +301,10 @@ class FlowCalculator:
                         'pulse flow (+v)': [],
                         'pulse flow (-v)': [],
                         'cycle flow': [],
-                        "eo flow (+v)": [],
-                        "eo flow (-v)": [],
+                        'pulse current (+v)': [],
+                        'pulse current (-v)': [],
                         "pulse energy (+v)": [],
                         "pulse energy (-v)": [],
-                        "cycle energy": [],
-                        "streaming current (v=0)": [],
-                        "cycle current": [],
-                        "cycle abs current": [],
                         "cycle power": []
                         }
 
@@ -337,27 +341,19 @@ class FlowCalculator:
                         # Because the data is in 1 sec intervals
                         # Integral of the variable over time is equivalent to the mean
                         # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
+                        cycle_pwr = np.trapz(new_df["power"])
 
                         pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
                         pulse_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
                         pulse_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
 
-                        eo_flow_pos = pulse_flow_pos - pressure_flow
-                        eo_flow_neg = pulse_flow_neg - pressure_flow
-
                         pulse_energy_pos = new_df.loc[(new_df["appv"] > 0)]["power"].mean() / pulse_flow_pos
                         pulse_energy_neg = new_df.loc[(new_df["appv"] < 0)]["power"].mean() / pulse_flow_neg
 
-                        streaming_current = new_df.loc[(new_df["appv"] == 0)]["current"].mean()
                         pulse_cur_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
                         pulse_cur_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
-                        cycle_mean_cur = (pulse_cur_pos + pulse_cur_neg)
-                        cycle_mean_cur_abs = abs(pulse_cur_pos) + abs(pulse_cur_neg)
 
-                        # modify cycle calculation  for duty cycle != 50%
                         cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
-                        cycle_energy = pulse_energy_pos * (1 - duty_cycle) + pulse_energy_neg * duty_cycle
-                        cycle_pwr = np.trapz(new_df["power"])
 
                         # Write to dictionary
                         EO_flow_dict["signal"].append(signal)
@@ -369,17 +365,15 @@ class FlowCalculator:
                         EO_flow_dict["pulse flow (+v)"].append(round(pulse_flow_pos, 3))
                         EO_flow_dict["pulse flow (-v)"].append(round(pulse_flow_neg, 3))
                         EO_flow_dict["cycle flow"].append(round(cycle_flow, 3))
-                        EO_flow_dict["eo flow (+v)"].append(round(eo_flow_pos, 3))
-                        EO_flow_dict["eo flow (-v)"].append(round(eo_flow_neg, 3))
+                        EO_flow_dict["pulse current (+v)"].append(round(pulse_cur_pos, 3))
+                        EO_flow_dict["pulse current (-v)"].append(round(pulse_cur_neg, 3))
                         EO_flow_dict["pulse energy (+v)"].append(round(pulse_energy_pos, 3))
                         EO_flow_dict["pulse energy (-v)"].append(round(pulse_energy_neg, 3))
-                        EO_flow_dict["cycle energy"].append(round(cycle_energy, 3))
-                        EO_flow_dict["streaming current (v=0)"].append(streaming_current)
-                        EO_flow_dict["cycle current"].append(round(cycle_mean_cur, 3))
-                        EO_flow_dict["cycle abs current"].append(round(cycle_mean_cur_abs, 3))
                         EO_flow_dict["cycle power"].append(round(cycle_pwr, 3))
 
         eo_flow_df = pd.DataFrame(EO_flow_dict)
+        self.eo_flow_df = eo_flow_df
+
         return eo_flow_df
 
     def FOM_calculator(self):
@@ -405,21 +399,20 @@ class FlowCalculator:
                'pressure flow (L/h/m^2)': [],
                'neg pulse flow (L/h/m^2)': [],
                'pos pulse flow (L/h/m^2)': [],
-               'cycle flow (L/h/m^2)': [],
                'hydraulic permeability': [],
                'pulse pressure (m)': [],
                'cycle pressure (m)': [],
+               'neg pulse current (A/m^2)': [],
+               'pos pulse current (A/m^2)': [],
                'pulse energy consumption (Wh/L)': [],
                'cycle energy consumption (Wh/L)': [],
-               'cycle current (A/m^2)': [],
-               'cycle abs current (A/m^2)': [],
-               'cycle abs flow (L/h/m^2)': [],
                'work in (W/m^2)': [],
                'work out (W/m^2)': [],
                'cycle efficiency': []
                }
-
-        flow_df = self.pulse_cycle_calculator()
+        if self.eo_flow_df.empty:
+            self.pulse_cycle_calculator()
+        flow_df = self.eo_flow_df
         good_fit = 0.8  # cut-off for R^2 value
 
         # List of unique conditions to filter for
@@ -434,54 +427,75 @@ class FlowCalculator:
                             & (flow_df["signal"] == signal)
                             & (flow_df["flow cell"] == flowcell)
                     )]
+                    new_df = new_df.copy()
 
                     duty_cycle = new_df.loc[(new_df["deltah"] == 0)]["duty cycle"].mean()
-
                     pressure_flow = new_df.loc[(new_df["deltah"] == 0)]["pressure flow (v=0)"].mean()
                     pulse_flow_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse flow (-v)"].mean()
                     pulse_flow_pos = new_df.loc[(new_df["deltah"] == 0)]["pulse flow (+v)"].mean()
+                    pulse_cur_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse current (-v)"].mean()
+                    pulse_cur_pos = new_df.loc[(new_df["deltah"] == 0)]["pulse current (+v)"].mean()
                     pulse_energy_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse energy (-v)"].mean()
-                    cycle_flow = new_df.loc[(new_df["deltah"] == 0)]["cycle flow"].mean()
-                    cycle_energy = new_df.loc[(new_df["deltah"] == 0)]["cycle energy"].mean()
-                    cycle_cur = new_df.loc[(new_df["deltah"] == 0)]["cycle current"].mean()
-                    cycle_abs_cur = new_df.loc[(new_df["deltah"] == 0)]["cycle abs current"].mean()
-                    cycle_abs_flow = abs(pulse_flow_pos) + abs(pulse_flow_neg)
+                    pulse_energy_pos = new_df.loc[(new_df["deltah"] == 0)]["pulse energy (+v)"].mean()
 
-                    # efficiency calculation
-                    # work in: integral( I (A/m^2) * V) -> W/m^2
+                    # modify cycle calculation  for duty cycle != 50%
+                    cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
+                    cycle_abs_flow = abs(pulse_flow_pos)* (1 - duty_cycle)  + abs(pulse_flow_neg) * duty_cycle
+
+                    cycle_cur = pulse_cur_pos * (1 - duty_cycle) + pulse_cur_neg * duty_cycle
+                    cycle_abs_cur = abs(pulse_cur_pos) * (1 - duty_cycle) + abs(pulse_cur_neg) * duty_cycle
+
+                    cycle_energy = pulse_energy_pos * (1 - duty_cycle) + pulse_energy_neg * duty_cycle
+
+
+                    # efficiency calculation: work in = integral( I (A/m^2) * V) -> W/m^2
                     work_in = new_df.loc[(new_df["deltah"] == 0)]["cycle power"].mean()
 
                     # Only write to dictionary if it's not empty
                     if not np.isnan(pulse_flow_neg):
-                        # hydraulic permeability (slope of linear fit vs deltah, v = 0)
-                        x = new_df["deltah"].values
-                        y1 = new_df["pressure flow (v=0)"].values
+                        # Drop any NaN in dataset before linear regression
+                        df1 = new_df.dropna(axis=0, how='any', subset=['pressure flow (v=0)'])
+                        df2 = new_df.dropna(axis=0, how='any', subset=['pulse flow (-v)'])
+                        df3 = new_df.dropna(axis=0, how='any', subset=['cycle flow'])
+
+                        x1 = df1['deltah'].values
+                        x2 = df2['deltah'].values
+                        x3 = df3['deltah'].values
+
+                        y1 = df1["pressure flow (v=0)"].values
+                        y2 = df2["pulse flow (-v)"].values
+                        y3 = df3["cycle flow"].values
+
+                        # default value is n/a unless the criteria is met
+                        hydraulic_perm = 'n/a'
+                        pulse_pressure = 'n/a'
+                        cycle_pressure = 'n/a'
+                        work_out = 'n/a'
+                        max_eff = 'n/a'
 
                         # calculate hydraulic permeability by linear regression
-                        length = len(x)
+                        length = len(x1)
                         if length > 1:
-                            x = x.reshape(length, 1)
+                            x1 = x1.reshape(length, 1)
                             y1 = y1.reshape(length, 1)
                             reg = linear_model.LinearRegression(fit_intercept=False)
-                            reg.fit(x, y1)
-                            score1 = reg.score(x, y1)
-
+                            reg.fit(x1, y1)
+                            score1 = reg.score(x1, y1)
                             # check the fit is good and slope is positive
                             if (score1 >= good_fit) and (reg.coef_[0][0] > 0):
                                 hydraulic_perm = reg.coef_[0][0]
                                 hydraulic_perm = round(hydraulic_perm, 3)
 
-                            else:
-                                hydraulic_perm = 'n/a'
-
+                        length = len(x2)
+                        if length > 1:
                             # pulse pressure (x-intercept of linear fit negative pulse flow vs deltah)
-                            y2 = new_df["pulse flow (-v)"].values
+                            x2 = x2.reshape(length, 1)
                             y2 = y2.reshape(length, 1)
                             reg = linear_model.LinearRegression()
-                            reg.fit(x, y2)
+                            reg.fit(x2, y2)
                             slope = reg.coef_[0][0]
                             intercept = reg.intercept_[0]
-                            score2 = reg.score(x, y2)
+                            score2 = reg.score(x2, y2)
                             if (score2 >= good_fit) and (slope > 0):
                                 pulse_pressure = -intercept / slope
                                 if pulse_pressure < 0:
@@ -489,22 +503,19 @@ class FlowCalculator:
                                 # check that it's a reasonable number (10 meter water column max)
                                 elif 0 < pulse_pressure < 10:
                                     pulse_pressure = round(pulse_pressure, 3)
-                                else:
-                                    pulse_pressure = 'n/a'
-                            else:
-                                pulse_pressure = 'n/a'
 
+                        length = len(x3)
+                        if length > 1:
                             # cycle pressure (x-intercept of linear fit cycle_flow vs deltah)
-                            y3 = new_df["cycle flow"].values
+                            x3 = x3.reshape(length, 1)
                             y3 = y3.reshape(length, 1)
                             reg = linear_model.LinearRegression()
-                            reg.fit(x, y3)
+                            reg.fit(x3, y3)
                             intercept = reg.intercept_[0]
                             slope = reg.coef_[0][0]
-                            score3 = reg.score(x, y3)
+                            score3 = reg.score(x3, y3)
                             if (score3 >= good_fit) and (slope > 0):
                                 cycle_pressure = -intercept / slope
-
                                 if cycle_pressure < 0:
                                     cycle_pressure = 0
                                     work_out = 0
@@ -517,20 +528,6 @@ class FlowCalculator:
                                     work_out = (abs(cycle_flow) / 1000 / 3600) * (cycle_pressure * 9.81 * 1000) / 4
                                     max_eff = work_out / work_in
                                     cycle_pressure = round(cycle_pressure, 3)
-                                else:
-                                    cycle_pressure = 'n/a'
-                                    work_out = 'n/a'
-                                    max_eff = 'n/a'
-                            else:
-                                cycle_pressure = 'n/a'
-                                work_out = 'n/a'
-                                max_eff = 'n/a'
-                        else:
-                            hydraulic_perm = 'n/a'
-                            pulse_pressure = 'n/a'
-                            cycle_pressure = 'n/a'
-                            work_out = 'n/a'
-                            max_eff = 'n/a'
 
                         FOM['flow cell'].append(flowcell)
                         FOM['signal'].append(signal)
@@ -539,15 +536,16 @@ class FlowCalculator:
                         FOM['pressure flow (L/h/m^2)'].append(round(pressure_flow, 3))
                         FOM['neg pulse flow (L/h/m^2)'].append(round(pulse_flow_neg, 3))
                         FOM['pos pulse flow (L/h/m^2)'].append(round(pulse_flow_pos, 3))
-                        FOM['cycle flow (L/h/m^2)'].append(round(cycle_flow, 3))
-                        FOM['pulse energy consumption (Wh/L)'].append(round(pulse_energy_neg, 3))
-                        FOM['cycle energy consumption (Wh/L)'].append(round(cycle_energy, 3))
                         FOM['hydraulic permeability'].append(hydraulic_perm)
                         FOM['pulse pressure (m)'].append(pulse_pressure)
                         FOM['cycle pressure (m)'].append(cycle_pressure)
-                        FOM['cycle current (A/m^2)'].append(round(cycle_cur, 3))
-                        FOM['cycle abs current (A/m^2)'].append(round(cycle_abs_cur, 3))
-                        FOM['cycle abs flow (L/h/m^2)'].append(round(cycle_abs_flow, 3))
+
+                        FOM['neg pulse current (A/m^2)'].append(round(pulse_cur_neg, 3))
+                        FOM['pos pulse current (A/m^2)'].append(round(pulse_cur_pos, 3))
+
+                        FOM['pulse energy consumption (Wh/L)'].append(round(pulse_energy_neg, 3))
+                        FOM['cycle energy consumption (Wh/L)'].append(round(cycle_energy, 3))
+
                         FOM['work in (W/m^2)'].append(work_in)
                         FOM['work out (W/m^2)'].append(work_out)
                         FOM['cycle efficiency'].append(max_eff)

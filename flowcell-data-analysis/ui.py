@@ -449,7 +449,7 @@ class UserInterface:
 
         # Ask user if they want to manually set y-limits for plotting
         user_input = messagebox.askyesno("Plotting",
-                                         "Manually set y limits for plotting?")
+                                         "Manually set y limits for plotting? Click no to automatically set scale")
         if user_input:
             auto_ylim = False
             flow_ymax = simpledialog.askinteger("Y limit", "Y limit for flow (L/h/m^2):")
