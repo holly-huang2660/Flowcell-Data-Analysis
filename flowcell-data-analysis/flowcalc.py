@@ -165,28 +165,38 @@ class FlowCalculator:
     def cycle_count(self):
         # Modifies self.raw_data when called
         # Add two columns to the raw data file - cycle count and phase change count
-        # assuming -0.5 / 0.5 V cycles
-        appv = list(self.raw_data["appv"])
-        sig = list(self.raw_data["signal"])
+        appv = list(self.raw_data['appv'])
+        sig = list(self.raw_data['signal'])
+        # Map intervals on column, if voltage is >0 V it's positive, if <0 V it's negative
+        status_list = []
+        for voltage in appv:
+            if voltage < 0:
+                status_list.append('neg v')
+            elif voltage > 0:
+                status_list.append('pos v')
+            else:
+                status_list.append('zero v')
+        self.raw_data['status'] = status_list
+
         cnt_list = []
         cyc_list = []
         cyc = 0
         per_phase_cnt = 0
-        first_phase = 0
+        first_phase = 'zero v'
 
-        for i in range(len(appv)):
-            if sig[i] == 0:
-                first_phase = 0
+        for i in range(len(status_list)):
+            if sig[i] == 0: # reset counter
+                first_phase = 'zero v'
                 per_phase_cnt = 0
                 cyc = 0
             else:
-                if appv[i] != 0 and first_phase == 0:
-                    first_phase = appv[i]
+                if status_list[i] != 'zero v' and first_phase == 'zero v':
+                    first_phase = status_list[i]
 
-                if appv[i] != appv[i - 1] and appv[i] == first_phase:
+                if status_list[i] != status_list[i - 1] and status_list[i] == first_phase:
                     cyc += 1
 
-                if appv[i] != appv[i - 1]:
+                if status_list[i] != status_list[i - 1]:
                     per_phase_cnt = 0
                 else:
                     per_phase_cnt += 1
@@ -196,6 +206,7 @@ class FlowCalculator:
 
         self.raw_data["cnt"] = cnt_list
         self.raw_data["cyc"] = cyc_list
+        # self.raw_data.to_csv('temp_raw_data.csv')
 
     def action_ignore(self):
         # Modifies self.raw_data when called
@@ -249,26 +260,26 @@ class FlowCalculator:
         # in subsequent calculations for eo flow and hydraulic resistance
 
         df = self.raw_data.copy()
-        df = df.loc[((df["signal"] != 0) & ((df["cyc"] > 1) | (df["appv"] == 0)))]
+        df = df.loc[((df["signal"] != 0) & ((df["cyc"] > 1) | (df["status"] == 'zero v')))]
 
-        flow1_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["flow1"].mean()
-        flow2_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["flow2"].mean()
+        flow1_df = df.groupby(["signal", "deltah", "status"], as_index=False)["flow1"].mean()
+        flow2_df = df.groupby(["signal", "deltah", "status"], as_index=False)["flow2"].mean()
 
         flow1_df.insert(0, "flow cell", self.cell_1)
         flow2_df.insert(0, "flow cell", self.cell_2)
         flow1_df.rename(columns={"flow1": "mean flow"}, inplace=True)
         flow2_df.rename(columns={"flow2": "mean flow"}, inplace=True)
 
-        pwr1_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["pwr1"].mean()
-        pwr2_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["pwr2"].mean()
+        pwr1_df = df.groupby(["signal", "deltah", "status"], as_index=False)["pwr1"].mean()
+        pwr2_df = df.groupby(["signal", "deltah", "status"], as_index=False)["pwr2"].mean()
 
         pwr1_df.insert(0, "flow cell", self.cell_1)
         pwr2_df.insert(0, "flow cell", self.cell_2)
         pwr1_df.rename(columns={"pwr1": "power"}, inplace=True)
         pwr2_df.rename(columns={"pwr2": "power"}, inplace=True)
 
-        cur1_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["cur1"].mean()
-        cur2_df = df.groupby(["signal", "deltah", "appv"], as_index=False)["cur2"].mean()
+        cur1_df = df.groupby(["signal", "deltah", "status"], as_index=False)["cur1"].mean()
+        cur2_df = df.groupby(["signal", "deltah", "status"], as_index=False)["cur2"].mean()
 
         cur1_df.insert(0, "flow cell", self.cell_1)
         cur2_df.insert(0, "flow cell", self.cell_2)
@@ -325,35 +336,42 @@ class FlowCalculator:
                     if not new_df.empty:
                         # list voltages applied
                         # If symmetrical record only the magnitude appv
-                        # else record in the format of 'pos v/neg v'
-                        appv = [appv for appv in list(new_df['appv'].unique()) if appv != 0]
-                        if sum(appv) == 0:
-                            appv = abs(appv[0])
+                        # else record in the format of 'neg v/pos v'
+                        raw_data = self.raw_data.copy()
+                        raw_data = raw_data.loc[((raw_data["signal"] == signal) & (raw_data["deltah"] == delta_h))]
+                        pos_v = raw_data.loc[(raw_data["status"] == 'pos v')]['appv'].max()
+                        neg_v = raw_data.loc[(raw_data["status"] == 'neg v')]['appv'].min()
+
+                        if pos_v + neg_v == 0:
+                            appv = round(pos_v, 3)
                         else:
-                            appv = '/'.join([str(n) for n in appv])
+                            appv = f'{round(neg_v, 3)}/{round(pos_v, 3)}'
 
                         # calculate duty cycle as % of time NEGATIVE voltage is applied, ignoring the first cycle
-                        df = self.raw_data.copy()
-                        df = df.loc[((df["signal"] == signal) & (df["deltah"] == delta_h) & (df["cyc"] > 1))]
-                        duty_cycle = df.loc[(df['appv'] < 0)]['appv'].count() / df.loc[(df['appv'] != 0)][
-                            'appv'].count()
+                        raw_data = raw_data.loc[(raw_data["cyc"] > 1)]
+                        duty_cycle = (raw_data.loc[(raw_data['status'] == 'neg v')]['status'].count()
+                                      / raw_data.loc[(raw_data['status'] != 'zero v')]['status'].count())
 
                         # Because the data is in 1 sec intervals
                         # Integral of the variable over time is equivalent to the mean
                         # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
-                        cycle_pwr = np.trapz(new_df["power"])
 
-                        pressure_flow = new_df.loc[(new_df["appv"] == 0)]["mean flow"].mean()
-                        pulse_flow_pos = new_df.loc[(new_df["appv"] > 0)]["mean flow"].mean()
-                        pulse_flow_neg = new_df.loc[(new_df["appv"] < 0)]["mean flow"].mean()
 
-                        pulse_energy_pos = new_df.loc[(new_df["appv"] > 0)]["power"].mean() / pulse_flow_pos
-                        pulse_energy_neg = new_df.loc[(new_df["appv"] < 0)]["power"].mean() / pulse_flow_neg
+                        pressure_flow = new_df.loc[(new_df["status"] == 'zero v')]["mean flow"].mean()
+                        pulse_flow_pos = new_df.loc[(new_df["status"] == 'pos v')]["mean flow"].mean()
+                        pulse_flow_neg = new_df.loc[(new_df["status"] == 'neg v')]["mean flow"].mean()
 
-                        pulse_cur_pos = new_df.loc[(new_df["appv"] > 0)]["current"].mean()
-                        pulse_cur_neg = new_df.loc[(new_df["appv"] < 0)]["current"].mean()
+                        pulse_power_pos = new_df.loc[(new_df["status"] == 'pos v')]["power"].mean()
+                        pulse_power_neg = new_df.loc[(new_df["status"] == 'neg v')]["power"].mean()
+
+                        pulse_energy_pos = pulse_power_pos / pulse_flow_pos
+                        pulse_energy_neg = pulse_power_neg / pulse_flow_neg
+
+                        pulse_cur_pos = new_df.loc[(new_df["status"] == 'pos v')]["current"].mean()
+                        pulse_cur_neg = new_df.loc[(new_df["status"] == 'neg v')]["current"].mean()
 
                         cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
+                        cycle_pwr = pulse_power_pos * (1 - duty_cycle) + pulse_power_neg * duty_cycle
 
                         # Write to dictionary
                         EO_flow_dict["signal"].append(signal)
