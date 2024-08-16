@@ -8,9 +8,6 @@ from circuit_models import CircuitModel
 
 default_resistor = 47
 default_diameter = 13 * 10 ** -3
-# default date time format: '%Y-%m-%d_%H:%M:%S' (e.g. 2024-01-01_09:00:00)
-# for older files (before 2023) use format: '%H:%M:%S'
-date_format = '%Y-%m-%d_%H:%M:%S'
 
 
 class FlowCalculator:
@@ -29,10 +26,22 @@ class FlowCalculator:
 
         # Get the name of the cell from the file title (PO or WY)
         self.file_name = self.file_path.split("/")[-1]
-        cell_pair = self.file_name.split("_")[-1]
+        cell_pair = self.file_name.split("_")[-1][-2:]
+        # change RBGB (red-black-green-blue) to RKGB
+        if cell_pair == 'RB':
+            cell_pair = 'RK'
         self.cell_1 = cell_pair[0]
         self.cell_2 = cell_pair[1]
         self.flowcell_list = [self.cell_1, self.cell_2]
+
+        # Determine time format to use based on when the data was recorded
+        # default date time format: '%Y-%m-%d_%H:%M:%S' (e.g. 2024-01-01_09:00:00)
+        # for older files in the CH archive use format: '%H:%M:%S'
+        exp_date = self.file_name.split("_")[0]
+        if exp_date[:2] == '19':
+            date_format = '%H:%M:%S'
+        else:
+            date_format = '%Y-%m-%d_%H:%M:%S'
 
         # 
         self.header = ["time",  # time series
@@ -260,7 +269,7 @@ class FlowCalculator:
         # in subsequent calculations for eo flow and hydraulic resistance
 
         df = self.raw_data.copy()
-        df = df.loc[((df["signal"] != 0) & ((df["cyc"] > 1) | (df["status"] == 'zero v')))]
+        df = df.loc[((df["signal"] != 0) & (((df["cyc"] > 1) & (df["cyc"] <= 10)) | (df["status"] == 'zero v')))]
 
         flow1_df = df.groupby(["signal", "deltah", "status"], as_index=False)["flow1"].mean()
         flow2_df = df.groupby(["signal", "deltah", "status"], as_index=False)["flow2"].mean()
@@ -343,9 +352,9 @@ class FlowCalculator:
                         neg_v = raw_data.loc[(raw_data["status"] == 'neg v')]['appv'].min()
 
                         if pos_v + neg_v == 0:
-                            appv = round(pos_v, 3)
+                            appv = f'±{round(pos_v, 3)}V'
                         else:
-                            appv = f'{round(neg_v, 3)}/{round(pos_v, 3)}'
+                            appv = f'+{round(pos_v, 3)}V/{round(neg_v, 3)}V'
 
                         # calculate duty cycle as % of time NEGATIVE voltage is applied, ignoring the first cycle
                         raw_data = raw_data.loc[(raw_data["cyc"] > 1)]
@@ -355,8 +364,6 @@ class FlowCalculator:
                         # Because the data is in 1 sec intervals
                         # Integral of the variable over time is equivalent to the mean
                         # Trapezoidal rule (b-a)*[y(a)+y(b)]/2 = 1/2*[y(a) + y(b)]
-
-
                         pressure_flow = new_df.loc[(new_df["status"] == 'zero v')]["mean flow"].mean()
                         pulse_flow_pos = new_df.loc[(new_df["status"] == 'pos v')]["mean flow"].mean()
                         pulse_flow_neg = new_df.loc[(new_df["status"] == 'neg v')]["mean flow"].mean()
@@ -377,7 +384,7 @@ class FlowCalculator:
                         EO_flow_dict["signal"].append(signal)
                         EO_flow_dict["appv"].append(appv)
                         EO_flow_dict["deltah"].append(delta_h)
-                        EO_flow_dict['duty cycle'].append(round(duty_cycle, 3))
+                        EO_flow_dict['duty cycle'].append(round(duty_cycle, 2))
                         EO_flow_dict["flow cell"].append(flowcell)
                         EO_flow_dict["pressure flow (v=0)"].append(round(pressure_flow, 3))
                         EO_flow_dict["pulse flow (+v)"].append(round(pulse_flow_pos, 3))
@@ -446,15 +453,16 @@ class FlowCalculator:
                             & (flow_df["flow cell"] == flowcell)
                     )]
                     new_df = new_df.copy()
+                    zero_height = new_df.loc[(new_df["deltah"] == 0)]
 
-                    duty_cycle = new_df.loc[(new_df["deltah"] == 0)]["duty cycle"].mean()
-                    pressure_flow = new_df.loc[(new_df["deltah"] == 0)]["pressure flow (v=0)"].mean()
-                    pulse_flow_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse flow (-v)"].mean()
-                    pulse_flow_pos = new_df.loc[(new_df["deltah"] == 0)]["pulse flow (+v)"].mean()
-                    pulse_cur_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse current (-v)"].mean()
-                    pulse_cur_pos = new_df.loc[(new_df["deltah"] == 0)]["pulse current (+v)"].mean()
-                    pulse_energy_neg = new_df.loc[(new_df["deltah"] == 0)]["pulse energy (-v)"].mean()
-                    pulse_energy_pos = new_df.loc[(new_df["deltah"] == 0)]["pulse energy (+v)"].mean()
+                    duty_cycle = zero_height["duty cycle"].mean()
+                    pressure_flow = zero_height["pressure flow (v=0)"].mean()
+                    pulse_flow_neg = zero_height["pulse flow (-v)"].mean()
+                    pulse_flow_pos = zero_height["pulse flow (+v)"].mean()
+                    pulse_cur_neg = zero_height["pulse current (-v)"].mean()
+                    pulse_cur_pos = zero_height["pulse current (+v)"].mean()
+                    pulse_energy_neg = zero_height["pulse energy (-v)"].mean()
+                    pulse_energy_pos = zero_height["pulse energy (+v)"].mean()
 
                     # modify cycle calculation  for duty cycle != 50%
                     cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
@@ -467,7 +475,7 @@ class FlowCalculator:
 
 
                     # efficiency calculation: work in = integral( I (A/m^2) * V) -> W/m^2
-                    work_in = new_df.loc[(new_df["deltah"] == 0)]["cycle power"].mean()
+                    work_in = zero_height["cycle power"].mean()
 
                     # Only write to dictionary if it's not empty
                     if not np.isnan(pulse_flow_neg):

@@ -32,7 +32,7 @@ class DataPlot:
                 self.pulse_df = pd.concat(pulse_df_list, ignore_index=True)
 
                 # Get raw data for avg and snapshot plot
-                merged = pd.merge(self.df, df, how='left', on=['signal', 'deltah', 'appv', 'cnt', 'cyc'])
+                merged = pd.merge(self.df, df, how='left', on=['signal', 'deltah', 'status', 'cyc', 'cnt'])
                 self.df = merged
 
         # Text for plot titles, auto-wrap ones that are too long
@@ -63,13 +63,16 @@ class DataPlot:
         file_name = [exp.split("/")[-1]]
 
         cell_pair = exp.split('/')[-1].split('_')[-1]
+        # change RBGB (red-black-green-blue) to RKGB
+        if cell_pair == 'RB':
+            cell_pair = 'RK'
         old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
         new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
         df.drop(columns=['time', 'rel time', 'sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
                 inplace=True)
         df.rename(columns=new_cols, inplace=True)
         df.drop(df[df['signal'] == 0].index, inplace=True)
-        df.drop_duplicates(subset=['appv', 'deltah', 'signal', 'cnt', 'cyc'], inplace=True)
+        df.drop_duplicates(subset=['signal', 'deltah', 'status', 'cyc', 'cnt'], inplace=True)
         return df, pulse_df, file_name
 
     def flowcell_averages(self):
@@ -261,9 +264,9 @@ class DataPlot:
         avg_list = []
         std_list = []
         for col in col_names:
-            avg_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False, sort=False)[col].mean()
+            avg_df = df_filter.groupby(["signal", "deltah", "status", "cnt"], as_index=False)[col].mean()
             avg_df.rename(columns={n: n + '_avg' for n in col_names}, inplace=True)
-            std_df = df_filter.groupby(["signal", "deltah", "appv", "cnt"], as_index=False, sort=False)[col].std()
+            std_df = df_filter.groupby(["signal", "deltah", "status", "cnt"], as_index=False)[col].std()
             std_df.rename(columns={n: n + '_std' for n in col_names}, inplace=True)
             avg_list.append(avg_df)
             std_list.append(std_df)
@@ -275,6 +278,12 @@ class DataPlot:
 
         df = avg.merge(std)
         df.dropna(axis=0, how='any', inplace=True, ignore_index=True)
+
+        # Force graph to show positive pulse first followed by negative pulse and reset index
+        df_pos = df.loc[(df['status'] == 'pos v')]
+        df_neg = df.loc[(df['status'] == 'neg v')]
+        df = pd.concat([df_pos, df_neg], ignore_index=True)
+        # df.to_csv('temp.csv')
 
         fig1, ax1 = plt.subplots(figsize=FIG_SIZE, layout="tight")
         fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
@@ -385,6 +394,9 @@ class DataPlot:
                 # Auto-scale y-axis
                 ymax = max([abs(n) for n in ax.get_ylim()])
                 ax.set_ylim(ymax * -1, ymax)
+        # for ax in (ax1, ax2):
+        #     xmin = min([n for n in ax.get_xlim()])
+        #     ax.set_xlim(xmin, xmin+1600)
 
         current_save = f"{figure_folder}/{self.exp_date}/current"
         flow_save = f"{figure_folder}/{self.exp_date}/flow"
