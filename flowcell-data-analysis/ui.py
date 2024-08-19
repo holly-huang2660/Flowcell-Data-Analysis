@@ -49,6 +49,8 @@ class UserInterface:
         self.circuit_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
         self.button_file_plot = Button(text="Flow & Current Plots", font=BUTTON_FONT, command=self.file_plot)
         self.file_plot_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
+        self.button_rawdata = Button(text="Export Raw Data", font=BUTTON_FONT, command=self.export_rawdata)
+        self.rawdata_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
 
         self.button_folder = Button(text="Browse folder", font=BUTTON_FONT, command=self.get_folder)
         self.button_folder_summary = Button(text="Generate Folder Summary", font=BUTTON_FONT,
@@ -78,6 +80,8 @@ class UserInterface:
         self.file_plot_check.grid(row=5, column=3, sticky="w")
         self.button_circuit_summary.grid(row=6, column=0, pady=15)
         self.circuit_sum_check.grid(row=6, column=1, sticky="w")
+        self.button_rawdata.grid(row=6, column=2, pady=15)
+        self.rawdata_check.grid(row=6, column=3, sticky="w")
 
         self.linebreak2 = Label(text="======================================", font=FONT, bg=BG)
         self.linebreak2.grid(row=7, column=0, columnspan=5)
@@ -126,6 +130,22 @@ class UserInterface:
 
         print(f"File summary generated. File is located in {self.output_folder}/summary")
         self.file_sum_check.config(text="✓")
+
+    def export_rawdata(self):
+        # Make folder if it doesn't exist
+        Path(f"{self.output_folder}/raw data").mkdir(parents=True, exist_ok=True)
+
+        # Get experiment date
+        exp_date = self.file_path[0].split("/")[-1].split("_")[0]
+        with pd.ExcelWriter(f"{self.output_folder}/raw data/{exp_date} raw data.xlsx") as writer:
+            for file in self.file_path:
+                flow_calculator = FlowCalculator(file_path=file)
+                df = flow_calculator.raw_data
+                cell_pair = flow_calculator.cell_pair
+                df.to_excel(writer, sheet_name=f'{exp_date}_{cell_pair}', index=False)
+
+        print(f"Raw data exported. File is located in {self.output_folder}/raw data")
+        self.rawdata_check.config(text="✓")
 
     def circuit_summary(self):
         # Make folder if it doesn't exist

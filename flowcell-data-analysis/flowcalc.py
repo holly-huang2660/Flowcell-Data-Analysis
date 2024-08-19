@@ -26,12 +26,12 @@ class FlowCalculator:
 
         # Get the name of the cell from the file title (PO or WY)
         self.file_name = self.file_path.split("/")[-1]
-        cell_pair = self.file_name.split("_")[-1][-2:]
+        self.cell_pair = self.file_name.split("_")[-1][-2:]
         # change RBGB (red-black-green-blue) to RKGB
-        if cell_pair == 'RB':
-            cell_pair = 'RK'
-        self.cell_1 = cell_pair[0]
-        self.cell_2 = cell_pair[1]
+        if self.cell_pair == 'RB':
+            self.cell_pair = 'RK'
+        self.cell_1 = self.cell_pair[0]
+        self.cell_2 = self.cell_pair[1]
         self.flowcell_list = [self.cell_1, self.cell_2]
 
         # Determine time format to use based on when the data was recorded
@@ -378,7 +378,10 @@ class FlowCalculator:
                         pulse_cur_neg = new_df.loc[(new_df["status"] == 'neg v')]["current"].mean()
 
                         cycle_flow = pulse_flow_pos * (1 - duty_cycle) + pulse_flow_neg * duty_cycle
+
+                        # cycle_pwr = np.trapz(new_df['power'])
                         cycle_pwr = pulse_power_pos * (1 - duty_cycle) + pulse_power_neg * duty_cycle
+
 
                         # Write to dictionary
                         EO_flow_dict["signal"].append(signal)

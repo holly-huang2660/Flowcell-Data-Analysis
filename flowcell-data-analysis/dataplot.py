@@ -62,10 +62,7 @@ class DataPlot:
         pulse_df = flow_calculator.pulse_cycle_calculator()
         file_name = [exp.split("/")[-1]]
 
-        cell_pair = exp.split('/')[-1].split('_')[-1]
-        # change RBGB (red-black-green-blue) to RKGB
-        if cell_pair == 'RB':
-            cell_pair = 'RK'
+        cell_pair = flow_calculator.cell_pair
         old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
         new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
         df.drop(columns=['time', 'rel time', 'sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
