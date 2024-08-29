@@ -13,6 +13,8 @@ COLOR = "crest"
 FIG_SIZE = (6, 4)
 SKIP_CELLS = []
 PULSE_LENGTH = 60  # default pulse length is 60 s, used for cycle avg plots
+PLOT_COLOR = {'R': 'tab:red', 'K': '#3c4142', 'G': 'tab:green', 'B': 'tab:blue',
+              'W': 'tab:grey', 'Y': '#dcdc39', 'P': 'tab:purple', 'O': 'tab:orange'}
 
 
 class DataPlot:
@@ -292,7 +294,7 @@ class DataPlot:
 
             if "flow" in y and label_text not in SKIP_CELLS:
                 markers, caps, bars = ax1.errorbar(df.index, df[f'{y}_avg'], fmt='.-', yerr=df[f'{y}_std'],
-                                                   label=label_text,
+                                                   label=label_text, color=PLOT_COLOR[label_text],
                                                    capsize=2, markersize=5, linewidth=1)
                 [bar.set_alpha(0.5) for bar in bars]
                 [cap.set_alpha(0.5) for cap in caps]
@@ -300,7 +302,7 @@ class DataPlot:
 
             elif "cur" in y and label_text not in SKIP_CELLS:
                 markers, caps, bars = ax2.errorbar(df.index, df[f'{y}_avg'], fmt='.-', yerr=df[f'{y}_std'],
-                                                   label=label_text,
+                                                   label=label_text, color=PLOT_COLOR[label_text],
                                                    capsize=2, markersize=5, linewidth=1, alpha=1)
                 [bar.set_alpha(0.5) for bar in bars]
                 [cap.set_alpha(0.5) for cap in caps]
@@ -361,7 +363,7 @@ class DataPlot:
                 label_text = y[-1]
 
             if "flow" in y and label_text not in SKIP_CELLS:
-                ax1.plot(y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
+                ax1.plot(y, '.-', color=PLOT_COLOR[label_text], data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
                 # ax1.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=neg_v, markersize=2, linewidth=1, label=label_text)
@@ -369,7 +371,7 @@ class DataPlot:
                 ax1.set_ylabel(r"Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
 
             elif "cur" in y and label_text not in SKIP_CELLS:
-                ax2.plot(y, '.-', data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
+                ax2.plot(y, '.-', color=PLOT_COLOR[label_text], data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
                 # ax2.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=neg_v, markersize=2, linewidth=1, label=label_text)
@@ -421,12 +423,12 @@ class DataPlot:
             cell_df = df.loc[(df['flow cell'] == cell)]
             if cell in 'POWY' and cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='cycle flow',
-                            line_kws={'linestyle': '--'}, marker='o', x_ci=None, ci=None, label=cell, ax=ax1)
+                            line_kws={'linestyle': '--'}, marker='o', color=PLOT_COLOR[cell], x_ci=None, ci=None, label=cell, ax=ax1)
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
             if cell in 'GBRK':
                 sns.regplot(data=cell_df, x='deltah', y='cycle flow',
-                            line_kws={'linestyle': '--'}, marker='^', x_ci=None, ci=None, label=cell, ax=ax1)
+                            line_kws={'linestyle': '--'}, marker='^', color=PLOT_COLOR[cell], x_ci=None, ci=None, label=cell, ax=ax1)
 
         ax1.axhline(y=0, color='black', linestyle='--')
         ax1.set_ylabel('Cycle Flow [L/h/m^2]')
@@ -438,12 +440,14 @@ class DataPlot:
             cell_df = df.loc[(df['flow cell'] == cell)]
             if cell in 'POWY' and cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
-                            line_kws={'linestyle': '--'}, marker='o', x_ci=None, ci=None, label=cell, ax=ax2)
+                            line_kws={'linestyle': '--'}, marker='o', color=PLOT_COLOR[cell],
+                            x_ci=None, ci=None, label=cell, ax=ax2)
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
             if cell in 'GBRK' and cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
-                            line_kws={'linestyle': '--'}, marker='^', x_ci=None, ci=None, label=cell, ax=ax2)
+                            line_kws={'linestyle': '--'}, marker='^', color=PLOT_COLOR[cell],
+                            x_ci=None, ci=None, label=cell, ax=ax2)
 
         ax2.axhline(y=0, color='black', linestyle='--')
         ax2.set_ylabel('Negative Pulse Flow [L/h/m^2]')

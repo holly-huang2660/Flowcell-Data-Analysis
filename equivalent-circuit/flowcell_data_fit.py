@@ -21,8 +21,7 @@ def r_squared_calc(y, y_fit):
     return r2
 
 
-def get_experiment_data(filepath):
-    #raw_file = askopenfilename()
+def get_experiment_data(filepath, exp_deltah=0, exp_signal=1):
     raw_file = filepath
     if ".comments" in raw_file:
         raw_file.replace(".comments", "")
@@ -33,12 +32,12 @@ def get_experiment_data(filepath):
 
     # filter for signal and deltah
     # exp_df = raw_data.loc[((raw_data['signal'] != 0) & (raw_data['deltah'] == deltah) & (raw_data['cyc'] > 1))]
-    exp_df = raw_data.loc[((raw_data['signal'] != 0) & (raw_data['deltah'] == deltah))]
+    exp_df = raw_data.loc[((raw_data['signal'] == exp_signal) & (raw_data['deltah'] == exp_deltah) & (raw_data['cyc'] > 1))]
     exp_df = exp_df.copy()
 
     # mean flow at zero appv
-    passive_flow_1 = raw_data.loc[((raw_data["appv"] == 0) & (raw_data['deltah'] == deltah))]["flow1"].mean()
-    passive_flow_2 = raw_data.loc[((raw_data["appv"] == 0) & (raw_data['deltah'] == deltah))]["flow2"].mean()
+    passive_flow_1 = raw_data.loc[((raw_data["appv"] == 0) & (raw_data['deltah'] == exp_deltah))]["flow1"].mean()
+    passive_flow_2 = raw_data.loc[((raw_data["appv"] == 0) & (raw_data['deltah'] == exp_deltah))]["flow2"].mean()
     # print(f'Passive flow: cell 1 = {round(passive_flow_1,3)}; cell 2 = {round(passive_flow_2,3)}')
 
     # construct relative time (seconds) column
@@ -76,20 +75,20 @@ def fit_exp_flow_data(file_name, xdata, ydata):
     ax2.set_title("flow cell 2", loc="left")
 
     for ax, y in {ax1: exp_flow1, ax2: exp_flow2}.items():
-        # Use non-linear least squares to fit a function f to data
-        # assumes ydata = f(xdata, *params) + eps
-        # Plotting simulated response with fitted paramater from simple RC model
-        popt1, pcov1 = curve_fit(f=circuit_model.circuit_RC,
-                                 xdata=xdata,
-                                 ydata=y,
-                                 p0=[1000, 0.1],
-                                 bounds=(0, [np.inf, np.inf]))
-        RC_fit_R, RC_fit_C = popt1[0], popt1[1]
-        print(f"RC Fitted results: R = {round(RC_fit_R, 2)} Ohms, C = {round(RC_fit_C, 2)}F")
-        sim1_flow = circuit_model.circuit_RC(xdata=xdata, resistance=RC_fit_R, capacitance=RC_fit_C)
-        sim1_fit = r_squared_calc(y, sim1_flow)
-        print(r"RC Model R^2=", round(sim1_fit, 3))
-        specific_sim_f1 = np.divide(sim1_flow, cell_area)
+        # # Use non-linear least squares to fit a function f to data
+        # # assumes ydata = f(xdata, *params) + eps
+        # # Plotting simulated response with fitted paramater from simple RC model
+        # popt1, pcov1 = curve_fit(f=circuit_model.circuit_RC,
+        #                          xdata=xdata,
+        #                          ydata=y,
+        #                          p0=[1000, 0.1],
+        #                          bounds=(0, [np.inf, np.inf]))
+        # RC_fit_R, RC_fit_C = popt1[0], popt1[1]
+        # print(f"RC Fitted results: R = {round(RC_fit_R, 2)} Ohms, C = {round(RC_fit_C, 2)}F")
+        # sim1_flow = circuit_model.circuit_RC(xdata=xdata, resistance=RC_fit_R, capacitance=RC_fit_C)
+        # sim1_fit = r_squared_calc(y, sim1_flow)
+        # print(r"RC Model R^2=", round(sim1_fit, 3))
+        # specific_sim_f1 = np.divide(sim1_flow, cell_area)
 
         popt2, pcov2 = curve_fit(f=circuit_model.circuit_RRC_diode,
                                  xdata=xdata,
@@ -114,7 +113,7 @@ def fit_exp_flow_data(file_name, xdata, ydata):
 
         secondary_ax = ax.twinx()
         secondary_ax.plot(exp_time, np.divide(y, cell_area), '-', label="flow")
-        secondary_ax.plot(exp_time, specific_sim_f1, '.', markersize=2, label="RC model")
+        # secondary_ax.plot(exp_time, specific_sim_f1, '.', markersize=2, label="RC model")
         secondary_ax.plot(exp_time, specific_sim_f2, '.', markersize=2, label="Diode model")
         secondary_ax.set_ylabel(r'Flow [L/h/$m^2$]')
 

@@ -242,7 +242,7 @@ class CircuitModel:
 
         self.xdata = pd.DataFrame({'time': self.time, 'appv': self.appv})
 
-    def plot_simulated_response(self, title="Equivalent circuit simulation"):
+    def plot_simulated_response(self, title="Equivalent circuit simulation", auto_scale=True, cur_max=0.01, v_max=1):
         # Plotting resultant current and applied voltage
         fig, ax1 = plt.subplots(figsize=(6, 4), layout="constrained")
         ax1.grid()
@@ -262,13 +262,21 @@ class CircuitModel:
         ax2 = ax1.twinx()
         ax2.plot(self.time, self.current, 'b--', label="Current")
         ax2.set_ylabel(r'Current [A]')
+
         # force symmetrical axis
-        # ymax = max([abs(n) for n in ax2.get_ylim()])
-        ymax = 0.2
-        ax2.set_ylim(ymax * -1, ymax)
+        if auto_scale:
+            ymax1 = max([abs(n) for n in ax1.get_ylim()])
+            ymax2 = max([abs(n) for n in ax2.get_ylim()])
+        else:
+            ymax1 = v_max
+            ymax2 = cur_max
+
+        ax1.set_ylim(ymax1 * -1, ymax1)
+        ax2.set_ylim(ymax2 * -1, ymax2)
 
         lines, labels = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
-        ax2.legend(lines + lines2, labels + labels2, loc=0)
+        ax2.legend(lines + lines2, labels + labels2, loc='upper right')
 
         plt.show()
+
