@@ -5,13 +5,14 @@ import math
 from sklearn import linear_model
 from scipy.optimize import curve_fit
 from circuit_models import CircuitModel
+from tkinter import simpledialog, messagebox
 
 default_resistor = 47
 default_diameter = 13 * 10 ** -3
-
+# manual_flowcell_name = False
 
 class FlowCalculator:
-    def __init__(self, file_path):
+    def __init__(self, file_path, manual_flowcell_name=False):
         self.file_path = file_path
 
         # get the comment file and write experiment conditions to the output summary sheet
@@ -24,19 +25,10 @@ class FlowCalculator:
         # Dictionary of parameters parsed from the comment file
         self.params = self.parse_comments()
 
-        # Get the name of the cell from the file title (PO or WY)
-        self.file_name = self.file_path.split("/")[-1]
-        self.cell_pair = self.file_name.split("_")[-1][-2:]
-        # change RBGB (red-black-green-blue) to RKGB
-        if self.cell_pair == 'RB':
-            self.cell_pair = 'RK'
-        self.cell_1 = self.cell_pair[0]
-        self.cell_2 = self.cell_pair[1]
-        self.flowcell_list = [self.cell_1, self.cell_2]
-
         # Determine time format to use based on when the data was recorded
         # default date time format: '%Y-%m-%d_%H:%M:%S' (e.g. 2024-01-01_09:00:00)
         # for older files in the CH archive use format: '%H:%M:%S'
+        self.file_name = self.file_path.split("/")[-1]
         exp_date = self.file_name.split("_")[0]
         if exp_date[:2] == '19':
             date_format = '%H:%M:%S'
@@ -79,9 +71,27 @@ class FlowCalculator:
         # add calculated columns
         self.calc_columns()
 
+        # Get the name of the cell from the file title (PO or WY) as default value
+        cell_pair = self.file_name.split("_")[-1][-2:]
+        # change RBGB (red-black-green-blue) to RKGB
+        if cell_pair == 'RB':
+            cell_pair = 'RK'
+        self.cell_1 = cell_pair[0]
+        self.cell_2 = cell_pair[1]
+        if manual_flowcell_name:
+            # Prompt user to manually change flow cell names if needed
+            # otherwise use the name from the file
+            self.flowcell_name_input()
+
         # initiate empty data frames
         self.flow_df = pd.DataFrame()
         self.eo_flow_df = pd.DataFrame()
+
+    def flowcell_name_input(self):
+        SLI_1 = self.params['slinames'][0]
+        SLI_2 = self.params['slinames'][1]
+        self.cell_1 = simpledialog.askstring("Cell 1", f'Flow cell connected to {SLI_1}')
+        self.cell_2 = simpledialog.askstring("Cell 2", f'flow cell connected to {SLI_2}')
 
     def parse_comments(self):
         params = {'period': None,
@@ -331,8 +341,9 @@ class FlowCalculator:
         # List of unique conditions to filter for
         signal_list = list(flow_df["signal"].unique())
         delta_h_list = list(flow_df["deltah"].unique())
+        flowcell_list = list(flow_df["flow cell"].unique())
 
-        for flowcell in self.flowcell_list:
+        for flowcell in flowcell_list:
             for signal in signal_list:
                 for delta_h in delta_h_list:
                     new_df = flow_df.loc[(
@@ -441,13 +452,14 @@ class FlowCalculator:
         if self.eo_flow_df.empty:
             self.pulse_cycle_calculator()
         flow_df = self.eo_flow_df
-        good_fit = 0.8  # cut-off for R^2 value
+        good_fit = 0.5  # cut-off for R^2 value
 
         # List of unique conditions to filter for
         signal_list = list(flow_df["signal"].unique())
         voltage_list = list(flow_df['appv'].unique())
+        flowcell_list = list(flow_df["flow cell"].unique())
 
-        for flowcell in self.flowcell_list:
+        for flowcell in flowcell_list:
             for signal in signal_list:
                 for voltage in voltage_list:
                     new_df = flow_df.loc[(
@@ -529,8 +541,8 @@ class FlowCalculator:
                                 pulse_pressure = -intercept / slope
                                 if pulse_pressure < 0:
                                     pulse_pressure = 0
-                                # check that it's a reasonable number (10 meter water column max)
-                                elif 0 < pulse_pressure < 10:
+                                # check that it's a reasonable number (100 meter water column max)
+                                elif 0 < pulse_pressure < 100:
                                     pulse_pressure = round(pulse_pressure, 3)
 
                         length = len(x3)
@@ -549,8 +561,8 @@ class FlowCalculator:
                                     cycle_pressure = 0
                                     work_out = 0
                                     max_eff = 0
-                                # check that it's a reasonable number (10 meter water column max)
-                                elif 0 < cycle_pressure < 10:
+                                # check that it's a reasonable number (100 meter water column max)
+                                elif 0 < cycle_pressure < 100:
                                     # max efficiency calculation
                                     # work out : J * P, J = J_max / 2 and P = P_max / 2
                                     # work out : max cycle flow (m^3/m^2/s) * max cycle pressure (Pa) / 4 -> W/m^2
@@ -645,7 +657,7 @@ class FlowCalculator:
                     if sim2_fit < 0.7:
                         cell2_R1, cell1_R2, cell2_C = 'n/a', 'n/a', 'n/a'
 
-                results = pd.DataFrame({'flow cell': self.flowcell_list,
+                results = pd.DataFrame({'flow cell': [self.cell_1, self.cell_2],
                                         'signal': [signal, signal],
                                         'R1 (Ohms)': [cell1_R1, cell2_R1],
                                         'R2 (Ohms)': [cell1_R2, cell2_R2],

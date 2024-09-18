@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from os import listdir
 from tkinter import *
+from tkinter import ttk
 from tkinter.filedialog import askopenfilenames, askdirectory
 from tkinter import simpledialog, messagebox
 from pathlib import Path
@@ -45,7 +46,8 @@ class UserInterface:
         self.button_file = Button(text="Browse file", font=BUTTON_FONT, command=self.get_file)
         self.button_file_summary = Button(text="Generate Data Summary", font=BUTTON_FONT, command=self.file_summary)
         self.file_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
-        self.button_circuit_summary = Button(text="Equivalent Circuit R(RC)", font=BUTTON_FONT, command=self.circuit_summary)
+        self.button_circuit_summary = Button(text="Equivalent Circuit R(RC)", font=BUTTON_FONT,
+                                             command=self.circuit_summary)
         self.circuit_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
         self.button_file_plot = Button(text="Flow & Current Plots", font=BUTTON_FONT, command=self.file_plot)
         self.file_plot_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
@@ -141,8 +143,7 @@ class UserInterface:
             for file in self.file_path:
                 flow_calculator = FlowCalculator(file_path=file)
                 df = flow_calculator.raw_data
-                cell_pair = flow_calculator.cell_pair
-                df.to_excel(writer, sheet_name=f'{exp_date}_{cell_pair}', index=False)
+                df.to_excel(writer, sheet_name=f'{exp_date}_{flow_calculator.cell_1+flow_calculator.cell_2}', index=False)
 
         print(f"Raw data exported. File is located in {self.output_folder}/raw data")
         self.rawdata_check.config(text="✓")
@@ -161,8 +162,8 @@ class UserInterface:
         # Make folder if it doesn't exist
         Path(f"{self.output_folder}/figures").mkdir(parents=True, exist_ok=True)
 
-        signal, deltah, auto_ylim, flow_ymax, cur_ymax = self.prompt_user_input()
-        data_plot = DataPlot(file_path=self.file_path)
+        signal, deltah, auto_ylim, flow_ymax, cur_ymax, auto_name = self.prompt_user_input()
+        data_plot = DataPlot(file_path=self.file_path, manual_flowcell_name=auto_name)
         # change attribute to user input
         data_plot.signal = signal
         data_plot.deltah = deltah
@@ -200,7 +201,7 @@ class UserInterface:
         exp_names = [f[:-3] for f in self.folder_file_list]
         exp_names = list(set(exp_names))  # find unique
 
-        signal, deltah, auto_ylim, flow_ymax, cur_ymax = self.prompt_user_input()
+        signal, deltah, auto_ylim, flow_ymax, cur_ymax, auto_name = self.prompt_user_input()
 
         for exp in exp_names:
             # find unique sets of experiments
@@ -479,4 +480,13 @@ class UserInterface:
             flow_ymax = 10
             cur_ymax = 100
 
-        return signal, deltah, auto_ylim, flow_ymax, cur_ymax
+        # Ask user if they want to manually name the flow cells for plotting
+        user_input = messagebox.askyesno("Plotting",
+                                         "Manually change flow cell names? Click no to automatically name based on "
+                                         "file name")
+        if user_input:
+            auto_name = True
+        else:
+            auto_name = False
+
+        return signal, deltah, auto_ylim, flow_ymax, cur_ymax, auto_name

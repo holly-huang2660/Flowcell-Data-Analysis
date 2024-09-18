@@ -7,27 +7,32 @@ from tkinter import simpledialog, messagebox
 from pathlib import Path
 from scipy import stats
 import seaborn as sns
+import datetime
 
 FONT_SIZE = 10
 COLOR = "crest"
 FIG_SIZE = (6, 4)
-SKIP_CELLS = []
+SKIP_CELLS = ['NA']  # note: cell Y and P SLI needs replacement
 PULSE_LENGTH = 60  # default pulse length is 60 s, used for cycle avg plots
+# manually match flow cell name to plot line color
 PLOT_COLOR = {'R': 'tab:red', 'K': '#3c4142', 'G': 'tab:green', 'B': 'tab:blue',
-              'W': 'tab:grey', 'Y': '#dcdc39', 'P': 'tab:purple', 'O': 'tab:orange'}
+              'W': 'tab:grey', 'Y': '#dcdc39', 'P': 'tab:purple', 'O': 'tab:orange',
+              'BR': 'tab:red', 'WP': 'tab:purple'
+              }
 
 
 class DataPlot:
-    def __init__(self, file_path):
+    def __init__(self, file_path, manual_flowcell_name=False):
         # Processing the first file
-        self.df, self.pulse_df, self.file_name = self.data_preprocessing(exp=file_path[0])
-
+        self.df, self.pulse_df, self.file_name = self.data_preprocessing(exp=file_path[0],
+                                                                         manual_flowcell_name=manual_flowcell_name)
         pulse_df_list = [self.pulse_df]
 
         # Processing for multiple files
         if len(file_path) > 1:
             for exp in file_path[1:]:
-                df, pulse_df, file_name = self.data_preprocessing(exp=exp)
+                df, pulse_df, file_name = self.data_preprocessing(exp=exp,
+                                                                  manual_flowcell_name=manual_flowcell_name)
 
                 # Get data for plotting pulse and cycle flow vs water column [m]
                 pulse_df_list.append(pulse_df)
@@ -57,16 +62,18 @@ class DataPlot:
         self.col_names = [name for name in self.df.columns if
                           ('flow' in name) or (('cur' in name) and ('vcur' not in name))]
 
-    def data_preprocessing(self, exp):
+        # Current time to append to end of filenames to avoid saving over existing graphs
+        self.time_created = datetime.datetime.now().time().strftime('%H%M%S')
+
+    def data_preprocessing(self, exp, manual_flowcell_name):
         # Processing the first file
-        flow_calculator = FlowCalculator(file_path=exp)
+        flow_calculator = FlowCalculator(file_path=exp, manual_flowcell_name=manual_flowcell_name)
         df = flow_calculator.raw_data
         pulse_df = flow_calculator.pulse_cycle_calculator()
         file_name = [exp.split("/")[-1]]
 
-        cell_pair = flow_calculator.cell_pair
-        old_cols = ['flow1', 'flow2', 'cur1', 'cur2']
-        new_cols = {name: f'{name}_{cell_pair}' for name in old_cols}
+        old_cols = ['appv', 'flow1', 'flow2', 'cur1', 'cur2']
+        new_cols = {name: f'{name}_{flow_calculator.cell_1}_{flow_calculator.cell_2}' for name in old_cols}
         df.drop(columns=['time', 'rel time', 'sli1', 'sli2', 'vcur1', 'vcur2', 'vtot1', 'vtot2', 'pwr1', 'pwr2'],
                 inplace=True)
         df.rename(columns=new_cols, inplace=True)
@@ -288,9 +295,9 @@ class DataPlot:
         fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
         for y in col_names:
             if "1" in y:
-                label_text = y[-2]
+                label_text = y.split('_')[-2]
             else:
-                label_text = y[-1]
+                label_text = y.split('_')[-1]
 
             if "flow" in y and label_text not in SKIP_CELLS:
                 markers, caps, bars = ax1.errorbar(df.index, df[f'{y}_avg'], fmt='.-', yerr=df[f'{y}_std'],
@@ -333,12 +340,13 @@ class DataPlot:
 
         # plt.show()
         fig1.savefig(f"{flow_save}/flow_avg_{self.exp_date}"
-                     f"_sig{self.signal}_h{self.deltah}.png",
+                     f"_sig{self.signal}_h{self.deltah}_{self.time_created}.png",
                      transparent=True)
         fig2.savefig(f"{current_save}/cur_avg_{self.exp_date}"
-                     f"_sig{self.signal}_h{self.deltah}.png",
+                     f"_sig{self.signal}_h{self.deltah}_{self.time_created}.png",
                      transparent=True)
-        plt.close()
+        plt.close(fig1)
+        plt.close(fig2)
 
         # write to temp file for troubleshooting
         # Path(f"{figure_folder}/temp").mkdir(parents=True, exist_ok=True)
@@ -358,12 +366,13 @@ class DataPlot:
         fig2, ax2 = plt.subplots(figsize=FIG_SIZE, layout="tight")
         for y in col_names:
             if "1" in y:
-                label_text = y[-2]
+                label_text = y.split('_')[-2]
             else:
-                label_text = y[-1]
+                label_text = y.split('_')[-1]
 
             if "flow" in y and label_text not in SKIP_CELLS:
-                ax1.plot(y, '.-', color=PLOT_COLOR[label_text], data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
+                ax1.plot(y, '.-', color=PLOT_COLOR[label_text], data=df, markersize=5, linewidth=1, label=label_text,
+                         alpha=0.5)
                 # ax1.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
                 # ax1.plot('rel time', y, '.-', data=neg_v, markersize=2, linewidth=1, label=label_text)
@@ -371,7 +380,8 @@ class DataPlot:
                 ax1.set_ylabel(r"Flow [L/h/$m^{2}$]", fontsize=FONT_SIZE)
 
             elif "cur" in y and label_text not in SKIP_CELLS:
-                ax2.plot(y, '.-', color=PLOT_COLOR[label_text], data=df, markersize=5, linewidth=1, label=label_text, alpha=0.5)
+                ax2.plot(y, '.-', color=PLOT_COLOR[label_text], data=df, markersize=5, linewidth=1, label=label_text,
+                         alpha=0.5)
                 # ax2.plot('rel time', y, 'b.', data=zero_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=pos_v, markersize=2, linewidth=1)
                 # ax2.plot('rel time', y, '.-', data=neg_v, markersize=2, linewidth=1, label=label_text)
@@ -403,12 +413,14 @@ class DataPlot:
         Path(current_save).mkdir(parents=True, exist_ok=True)
         Path(flow_save).mkdir(parents=True, exist_ok=True)
 
-        fig1.savefig(f"{flow_save}/flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png", transparent=True)
-        fig2.savefig(f"{current_save}/cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}.png",
+        fig1.savefig(f"{flow_save}/flow_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}_{self.time_created}.png",
+                     transparent=True)
+        fig2.savefig(f"{current_save}/cur_snapshot_{self.exp_date}_sig{self.signal}_h{self.deltah}_{self.time_created}.png",
                      transparent=True)
 
         # plt.show()
-        plt.close()
+        plt.close(fig1)
+        plt.close(fig2)
 
     def flow_vs_water_column(self, figure_folder='figures'):
         df = self.pulse_df.loc[(self.pulse_df['signal'] == self.signal)]
@@ -421,14 +433,16 @@ class DataPlot:
         # format marker differently for system 1 vs 2
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'POWY' and cell not in SKIP_CELLS:
+            if cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='cycle flow',
-                            line_kws={'linestyle': '--'}, marker='o', color=PLOT_COLOR[cell], x_ci=None, ci=None, label=cell, ax=ax1)
-        for cell in list(df['flow cell'].unique()):
-            cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'GBRK':
-                sns.regplot(data=cell_df, x='deltah', y='cycle flow',
-                            line_kws={'linestyle': '--'}, marker='^', color=PLOT_COLOR[cell], x_ci=None, ci=None, label=cell, ax=ax1)
+                            line_kws={'linestyle': '--'}, marker='o', color=PLOT_COLOR[cell], x_ci=None, ci=None,
+                            label=cell, ax=ax1)
+        # for cell in list(df['flow cell'].unique()):
+        #     cell_df = df.loc[(df['flow cell'] == cell)]
+        #     if cell in 'GBRK':
+        #         sns.regplot(data=cell_df, x='deltah', y='cycle flow',
+        #                     line_kws={'linestyle': '--'}, marker='^', color=PLOT_COLOR[cell], x_ci=None, ci=None,
+        #                     label=cell, ax=ax1)
 
         ax1.axhline(y=0, color='black', linestyle='--')
         ax1.set_ylabel('Cycle Flow [L/h/m^2]')
@@ -438,16 +452,16 @@ class DataPlot:
 
         for cell in list(df['flow cell'].unique()):
             cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'POWY' and cell not in SKIP_CELLS:
+            if cell not in SKIP_CELLS:
                 sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
                             line_kws={'linestyle': '--'}, marker='o', color=PLOT_COLOR[cell],
                             x_ci=None, ci=None, label=cell, ax=ax2)
-        for cell in list(df['flow cell'].unique()):
-            cell_df = df.loc[(df['flow cell'] == cell)]
-            if cell in 'GBRK' and cell not in SKIP_CELLS:
-                sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
-                            line_kws={'linestyle': '--'}, marker='^', color=PLOT_COLOR[cell],
-                            x_ci=None, ci=None, label=cell, ax=ax2)
+        # for cell in list(df['flow cell'].unique()):
+        #     cell_df = df.loc[(df['flow cell'] == cell)]
+        #     if cell in 'GBRK' and cell not in SKIP_CELLS:
+        #         sns.regplot(data=cell_df, x='deltah', y='pulse flow (-v)',
+        #                     line_kws={'linestyle': '--'}, marker='^', color=PLOT_COLOR[cell],
+        #                     x_ci=None, ci=None, label=cell, ax=ax2)
 
         ax2.axhline(y=0, color='black', linestyle='--')
         ax2.set_ylabel('Negative Pulse Flow [L/h/m^2]')
@@ -458,6 +472,6 @@ class DataPlot:
         Path(save_folder).mkdir(parents=True, exist_ok=True)
 
         fig.savefig(
-            f"{save_folder}/flow_vs_deltah_{self.exp_date}_sig{self.signal}.png",
+            f"{save_folder}/flow_vs_deltah_{self.exp_date}_sig{self.signal}_{self.time_created}.png",
             transparent=True)
-        plt.close()
+        plt.close(fig)
