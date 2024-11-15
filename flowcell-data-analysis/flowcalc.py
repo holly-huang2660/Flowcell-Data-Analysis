@@ -57,6 +57,10 @@ class FlowCalculator:
                                     )
         # print(self.params)
 
+        #one-off fix: for experiment 241101 signal 0.8 is actually signal 15
+        if '241101' in exp_date:
+            self.raw_data['signal'].replace(to_replace=0.8, value=15, inplace=True)
+
         # Format time column for plotting, drop rows that cannot be parsed and duplicate rows to keep to 1 point/sec
         self.raw_data['time'] = pd.to_datetime(self.raw_data["time"], format=date_format,
                                                errors="coerce")
