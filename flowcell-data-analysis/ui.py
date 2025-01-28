@@ -55,7 +55,7 @@ class UserInterface:
         self.rawdata_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
 
         self.button_folder = Button(text="Browse folder", font=BUTTON_FONT, command=self.get_folder)
-        self.button_folder_summary = Button(text="Generate Folder Summary", font=BUTTON_FONT,
+        self.button_folder_summary = Button(text="Folder & Circuit Summary", font=BUTTON_FONT,
                                             command=self.folder_summary)
         self.folder_sum_check = Label(text="", fg=FG, bg=BG, font=BUTTON_FONT)
         self.button_folder_boxplot = Button(text="Generate Boxplot", font=BUTTON_FONT, command=self.boxplot_plot)
@@ -228,7 +228,7 @@ class UserInterface:
 
         folder_name = self.folder_path.split("/")[-1]
         self.export_data_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} folder summary.xlsx")
-        # self.export_circuit_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} circuit summary.xlsx")
+        self.export_circuit_summary(file_list=self.folder_file_list, summary_name=f"{folder_name} circuit summary.xlsx")
 
         print(f"Folder summary generated. File is located in {self.output_folder}/summary")
         self.folder_sum_check.config(text="✓")
@@ -243,14 +243,12 @@ class UserInterface:
         flow_list = []
         eo_list = []
         fom_list = []
-        # circuit_list = []
 
         for file in file_list:
             flow_calculator = FlowCalculator(file_path=file)
             mf = flow_calculator.mean_flow_calculator()
             eo = flow_calculator.pulse_cycle_calculator()
             fom = flow_calculator.FOM_calculator()
-            # circuit = flow_calculator.circuit_fitting()
 
             # remove flow cell designation from file name
             exp_name = file.split('/')[-1][:-3]
@@ -259,12 +257,10 @@ class UserInterface:
             mf.insert(0, "file", exp_name)
             eo.insert(0, "file", exp_name)
             fom.insert(0, "file", exp_name)
-            # circuit.insert(0, "file", exp_name)
 
             flow_list.append(mf)
             eo_list.append(eo)
             fom_list.append(fom)
-            # circuit_list.append(circuit)
 
             material_list['file'].append(exp_name)
             material_list['membrane'].append(flow_calculator.params['membrane'])
@@ -283,7 +279,6 @@ class UserInterface:
             fom_df.to_excel(writer, sheet_name="figures of merit", index=False)
             flow_df.to_excel(writer, sheet_name="flow and power summary", index=False)
             eo_flow_df.to_excel(writer, sheet_name="pulse and cycle calc", index=False)
-            # circuit_df.to_excel(writer, sheet_name="equivalent circuit", index=False)
 
     def export_circuit_summary(self, file_list, summary_name):
         material_list = {

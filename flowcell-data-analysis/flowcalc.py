@@ -7,9 +7,9 @@ from scipy.optimize import curve_fit
 from circuit_models import CircuitModel
 from tkinter import simpledialog, messagebox
 
-default_resistor = 47
-default_diameter = 13 * 10 ** -3
-# manual_flowcell_name = False
+DEFAULT_RESISTOR = 47  # Default resistor in ohms if not specified
+DEFAULT_DIAMETER = 13 * 10 ** -3 # Default sample diameter in mm if not specified
+DROP_SIG1H0 = 'FIRST' # ['FIRST', 'LAST'] If there are 2 repeats of signal = 1, deltah = 0 choose to drop either the first or last dataset
 
 class FlowCalculator:
     def __init__(self, file_path, manual_flowcell_name=False):
@@ -27,7 +27,7 @@ class FlowCalculator:
 
         # Determine time format to use based on when the data was recorded
         # default date time format: '%Y-%m-%d_%H:%M:%S' (e.g. 2024-01-01_09:00:00)
-        # for older files in the CH archive use format: '%H:%M:%S'
+        # for older files in the CH archive folder use format: '%H:%M:%S'
         self.file_name = self.file_path.split("/")[-1]
         exp_date = self.file_name.split("_")[0]
         if exp_date[:2] == '19':
@@ -39,13 +39,13 @@ class FlowCalculator:
         self.header = ["time",  # time series
                        "appv",  # set voltage (V)
                        "sli1",  # flow rate (uL/min)
-                       "vtot1",  # actual voltage?
-                       "vcur1",  # current?
+                       "vtot1",  # measured voltage for cell 1
+                       "vcur1",  # current for cell 1
                        "sli2",  # flow rate (uL/min)
-                       "vtot2",  # actual voltage?
-                       "vcur2",  # current?
-                       "deltah",
-                       "signal"
+                       "vtot2",  # measured voltage for cell 2
+                       "vcur2",  # current for cell 2
+                       "deltah", # water column height
+                       "signal" # signal for different voltage waveforms
                        ]
 
         self.raw_data = pd.read_csv(filepath_or_buffer=self.file_path,
@@ -57,9 +57,9 @@ class FlowCalculator:
                                     )
         # print(self.params)
 
-        #one-off fix: for experiment 241101 signal 0.8 is actually signal 15
-        if '241101' in exp_date:
-            self.raw_data['signal'].replace(to_replace=0.8, value=15, inplace=True)
+        # one-off fix: for experiment 241101 signal 0.8 is actually signal 15
+        # if '241101' in exp_date:
+        #     self.raw_data['signal'].replace(to_replace=0.8, value=15, inplace=True)
 
         # Format time column for plotting, drop rows that cannot be parsed and duplicate rows to keep to 1 point/sec
         self.raw_data['time'] = pd.to_datetime(self.raw_data["time"], format=date_format,
@@ -77,13 +77,16 @@ class FlowCalculator:
 
         # Get the name of the cell from the file title (PO or WY) as default value
         cell_pair = self.file_name.split("_")[-1][-2:]
-        # change RBGB (red-black-green-blue) to RKGB
+
+        # Hacky name change for processing data before 2019
+        # Change RBGB (red-black-green-blue) to RKGB
         if cell_pair == 'RB':
             cell_pair = 'RK'
         self.cell_1 = cell_pair[0]
         self.cell_2 = cell_pair[1]
         if manual_flowcell_name:
             # Prompt user to manually change flow cell names if needed
+            # Used for stacking experiments
             # otherwise use the name from the file
             self.flowcell_name_input()
 
@@ -177,11 +180,11 @@ class FlowCalculator:
 
         if params['diameter'] is None:
             # print('Diameter not specified, using default value %f m' % default_diameter)
-            params['diameter'] = default_diameter
+            params['diameter'] = DEFAULT_DIAMETER
 
         if params['resistor'] is None:
             # print('Resistor not specified, using default value %f ohm' % default_resistor)
-            params['resistor'] = default_resistor
+            params['resistor'] = DEFAULT_RESISTOR
 
         return params
 
@@ -255,6 +258,20 @@ class FlowCalculator:
         if len(self.params["ignoredsignals"]) > 0:
             for signal in self.params["ignoredsignals"]:
                 df.drop(df[df['signal'] == signal].index, inplace=True)
+
+        # ignore the first signal = 1 height = 0 if there are two repeats
+        # one repeat would have ~1322 rows and two repeats would have 2644 or 2645 rows
+        mask = ((df['signal'] == 1) & (df['deltah'] == 0))
+        expected_rows = 1400
+        if len(df[mask]) > expected_rows:
+            row_num = df[mask].index
+            row_min = row_num.min()
+            row_max = row_num.max()
+            if DROP_SIG1H0 == 'FIRST':
+                df.drop(index=range(row_min-1, row_min+expected_rows), inplace=True)
+            elif DROP_SIG1H0 == 'LAST':
+                df.drop(index=range(row_max-expected_rows-1, row_max), inplace=True)
+
 
     def calc_columns(self):
         unit_conversion = 1e-6 * 60  # convert unit from uL/min to L/hr
